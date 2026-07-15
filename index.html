@@ -319,7 +319,7 @@
     <div class="main-col">
       <div class="header">
         <h1>Project Gantt Planner</h1>
-        <p>Data lives entirely in a linked .json file, never in this page. Open an existing file or create a new one below, then add resources and tag each with a project. Drag a resource bar to move it, drag its edges to change duration, or click a week in the timeline to see who's allocated that week — each project gets its own timeline bar that automatically fits around its resources.</p>
+        <p>Data lives entirely in a linked .json file, never in this page. Open an existing file or create a new one below, then add resources and tag each with a project. Drag a resource bar to move it, drag its edges to change duration, or click one or more weeks in the timeline to see who's allocated during them — each project gets its own timeline bar that automatically fits around its resources.</p>
       </div>
 
       <div class="toolbar">
@@ -375,7 +375,7 @@
     <aside class="side-panel" id="sidePanel">
       <div class="panel-header">
         <div>
-          <div class="panel-date-label">Selected week</div>
+          <div class="panel-date-label">Selected week(s)</div>
           <div class="panel-date" id="panelDate">—</div>
         </div>
         <button type="button" class="panel-close" id="panelClose" title="Close">✕</button>
@@ -431,7 +431,7 @@
   var resources = [];
   var nextId = 1;
   var colorSeq = 0;
-  var selectedWeekIndex = null;
+  var selectedWeeks = []; // array of selected week indices, shown together in the side panel
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
   var collapsedProjects = {}; // project name -> true when its resource rows are hidden
   var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
@@ -487,6 +487,27 @@
   }
   function weekLabelLong(w) {
     return 'Week of ' + fmtLong(dateForWeek(w));
+  }
+  function selectedWeeksLabel() {
+    var sorted = selectedWeeks.slice().sort(function (a, b) { return a - b; });
+    if (!sorted.length) return '—';
+    if (sorted.length === 1) return weekLabelLong(sorted[0]);
+    var runs = [];
+    var runStart = sorted[0];
+    var prev = sorted[0];
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i] === prev + 1) { prev = sorted[i]; continue; }
+      runs.push([runStart, prev]);
+      runStart = sorted[i];
+      prev = sorted[i];
+    }
+    runs.push([runStart, prev]);
+    var parts = runs.map(function (run) {
+      return run[0] === run[1]
+        ? fmtShort(dateForWeek(run[0]))
+        : fmtShort(dateForWeek(run[0])) + '–' + fmtShort(weekEndDate(run[1]));
+    });
+    return sorted.length + ' weeks selected (' + parts.join(', ') + ')';
   }
 
   function addResourceInternal(name, allocation, start, duration, project) {
@@ -706,13 +727,14 @@
     var positions = [(LABEL_WIDTH + todayLeft) + 'px 0'];
     var repeats = ['no-repeat'];
 
-    if (selectedWeekIndex !== null) {
-      var selLeft = selectedWeekIndex * WEEK_WIDTH;
+    if (selectedWeeks.length) {
       var tint = 'color-mix(in srgb, var(--series-1) 20%, transparent)';
-      images.push('linear-gradient(' + tint + ', ' + tint + ')');
-      sizes.push(WEEK_WIDTH + 'px 100%');
-      positions.push((LABEL_WIDTH + selLeft) + 'px 0');
-      repeats.push('no-repeat');
+      selectedWeeks.forEach(function (w) {
+        images.push('linear-gradient(' + tint + ', ' + tint + ')');
+        sizes.push(WEEK_WIDTH + 'px 100%');
+        positions.push((LABEL_WIDTH + w * WEEK_WIDTH) + 'px 0');
+        repeats.push('no-repeat');
+      });
     }
 
     images.push('linear-gradient(to right, var(--gridline) 0 1px, transparent 1px 100%)');
@@ -758,17 +780,17 @@
   function renderPanel() {
     renderPanelFilterChips();
 
-    if (selectedWeekIndex === null) {
+    if (!selectedWeeks.length) {
       sidePanel.classList.remove('open');
       return;
     }
     sidePanel.classList.add('open');
-    panelDate.textContent = weekLabelLong(selectedWeekIndex);
+    panelDate.textContent = selectedWeeksLabel();
 
     var allGroupNames = projectGroups().map(function (g) { return g.name; });
     var isAll = panelFilter === null;
     var active = resources.filter(function (r) {
-      var inRange = selectedWeekIndex >= r.start && selectedWeekIndex < r.start + r.duration;
+      var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
       var inFilter = isAll || panelFilter.indexOf(r.project || 'Untitled Project') !== -1;
       return inRange && inFilter;
     });
@@ -791,7 +813,7 @@
     panelSummary.textContent = peopleCount
       ? peopleCount + ' resource' + (peopleCount === 1 ? '' : 's') + ' · ' + total + '% total allocation' +
         (projectCount > 1 ? ' · ' + projectCount + ' projects' : '') + filterNote
-      : 'No resources allocated this week' + filterNote;
+      : 'No resources allocated for the selected week(s)' + filterNote;
 
     panelList.innerHTML = nameOrder.map(function (key) {
       var g = byName[key];
@@ -836,7 +858,7 @@
     var tIdx = todayWeekIndex();
     for (var w = 0; w < TOTAL_WEEKS; w++) {
       var isToday = (w === tIdx);
-      var isSelected = (w === selectedWeekIndex);
+      var isSelected = selectedWeeks.indexOf(w) !== -1;
       html += '<div class="cell week-cell' + (isToday ? ' today' : '') + (isSelected ? ' selected' : '') + '" data-week-index="' + w + '" title="' + escapeAttr(weekLabelLong(w)) + '">' +
         weekCellLabel(w) +
         '</div>';
@@ -977,13 +999,14 @@
     var weekCell = e.target.closest('.week-cell');
     if (weekCell) {
       var idx = Number(weekCell.dataset.weekIndex);
-      selectedWeekIndex = (selectedWeekIndex === idx) ? null : idx;
+      var pos = selectedWeeks.indexOf(idx);
+      if (pos === -1) selectedWeeks.push(idx); else selectedWeeks.splice(pos, 1);
       render();
     }
   });
 
   panelClose.addEventListener('click', function () {
-    selectedWeekIndex = null;
+    selectedWeeks = [];
     render();
   });
 
