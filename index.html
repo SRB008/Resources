@@ -327,6 +327,7 @@
         <button type="button" class="ghost-btn" id="saveAsBtn">Save As…</button>
         <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
         <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
+        <button type="button" class="ghost-btn" id="viewToggleBtn">View: Projects</button>
         <span class="save-status" id="saveStatus">—</span>
       </div>
 
@@ -352,6 +353,11 @@
         <div class="resource-filter" id="resourceFilterBar" style="display:none">
           <div class="resource-filter-label">Filter resources</div>
           <div class="resource-filter-chips" id="resourceFilterChips"></div>
+        </div>
+
+        <div class="resource-filter" id="projectFilterBar" style="display:none">
+          <div class="resource-filter-label">Filter projects</div>
+          <div class="resource-filter-chips" id="projectFilterChips"></div>
         </div>
 
         <div class="gantt-card">
@@ -410,6 +416,7 @@
   var saveAsBtn = document.getElementById('saveAsBtn');
   var reconnectBtn = document.getElementById('reconnectBtn');
   var exportBtn = document.getElementById('exportBtn');
+  var viewToggleBtn = document.getElementById('viewToggleBtn');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -419,6 +426,8 @@
   var panelFilterChips = document.getElementById('panelFilterChips');
   var resourceFilterBar = document.getElementById('resourceFilterBar');
   var resourceFilterChips = document.getElementById('resourceFilterChips');
+  var projectFilterBar = document.getElementById('projectFilterBar');
+  var projectFilterChips = document.getElementById('projectFilterChips');
   var editableArea = document.getElementById('editableArea');
   var lockOverlay = document.getElementById('lockOverlay');
   var gateOpenBtn = document.getElementById('gateOpenBtn');
@@ -432,8 +441,13 @@
   var nextId = 1;
   var selectedWeeks = []; // array of selected week indices, shown together in the side panel
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
-  var collapsedProjects = {}; // project name -> true when its resource rows are hidden
+  var collapsedGroups = { project: {}, resource: {} }; // per-view: group name -> true when its rows are hidden
   var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
+  var projectFilter = null; // null = all projects; otherwise an array of selected project names (chart-wide)
+  var viewMode = 'project'; // 'project' groups the chart by project, 'resource' groups it by resource
+  try {
+    if (localStorage.getItem('gantt-view-mode') === 'resource') viewMode = 'resource';
+  } catch (err) {}
 
   var fsApiSupported = !!(window.showOpenFilePicker && window.showSaveFilePicker);
   var fileHandle = null;
@@ -527,16 +541,24 @@
     return { start: start, end: end };
   }
 
-  function projectGroups() {
+  function keyForProject(r) { return r.project || 'Untitled Project'; }
+  function keyForResource(r) { return (r.name || 'Untitled').trim() || 'Untitled'; }
+  function entryGroupKey(r) { return viewMode === 'resource' ? keyForResource(r) : keyForProject(r); }
+
+  function groupBy(keyFn) {
     var order = [];
     var map = {};
     resources.forEach(function (r) {
-      var key = r.project || 'Untitled Project';
+      var key = keyFn(r);
       if (!map[key]) { map[key] = { name: key, resources: [] }; order.push(key); }
       map[key].resources.push(r);
     });
     return order.map(function (key) { return map[key]; });
   }
+
+  function projectGroups() { return groupBy(keyForProject); }
+  function resourceGroups() { return groupBy(keyForResource); }
+  function displayGroups() { return viewMode === 'resource' ? resourceGroups() : projectGroups(); }
 
   function uniqueResourceNames() {
     var seen = {};
@@ -772,6 +794,20 @@
     resourceFilterChips.innerHTML = html;
   }
 
+  function renderProjectFilterChips() {
+    var names = projectGroups().map(function (g) { return g.name; });
+    projectFilterBar.style.display = names.length ? '' : 'none';
+    var isAll = projectFilter === null;
+    var isNone = !isAll && projectFilter.length === 0;
+    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All projects</button>';
+    html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
+    html += names.map(function (n) {
+      var checked = isAll || projectFilter.indexOf(n) !== -1;
+      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-project="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
+    }).join('');
+    projectFilterChips.innerHTML = html;
+  }
+
   function renderPanel() {
     renderPanelFilterChips();
 
@@ -831,7 +867,9 @@
   }
 
   function render() {
+    viewToggleBtn.textContent = 'View: ' + (viewMode === 'resource' ? 'Resource' : 'Projects');
     renderResourceFilterChips();
+    renderProjectFilterChips();
 
     grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
     var bg = gridBackground();
@@ -859,26 +897,33 @@
         '</div>';
     }
 
-    // Project + resource rows, grouped by project
-    var groups = projectGroups();
+    // Rows, grouped by project or resource depending on viewMode
+    var groups = displayGroups();
+    var groupNoun = viewMode === 'resource' ? 'resource' : 'project';
     var isFiltered = resourceFilter !== null;
+    var isProjectFiltered = projectFilter !== null;
     var rowCounter = 0;
     var renderedAny = false;
     groups.forEach(function (group, gi) {
-      var visibleResources = isFiltered
-        ? group.resources.filter(function (r) { return resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1; })
-        : group.resources;
-      if (isFiltered && !visibleResources.length) return;
+      var visibleResources = group.resources.filter(function (r) {
+        var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
+        var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
+        return nameOk && projOk;
+      });
+      if ((isFiltered || isProjectFiltered) && !visibleResources.length) return;
       renderedAny = true;
 
       var range = projectRangeFor(visibleResources);
       var colorSlot = (gi % 8) + 1;
       var groupClass = gi > 0 ? ' group-divider' : '';
-      var isCollapsed = !!collapsedProjects[group.name];
+      var isCollapsed = !!collapsedGroups[viewMode][group.name];
+      var renameHint = viewMode === 'resource'
+        ? 'Rename resource (applies to every assignment for this person)'
+        : 'Rename project (applies to every resource in it)';
 
       html += '<div class="cell label-cell' + groupClass + '" data-project="' + escapeAttr(group.name) + '">' +
-        '<button type="button" class="collapse-toggle' + (isCollapsed ? ' collapsed' : '') + '" data-project="' + escapeAttr(group.name) + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + ' project">▾</button>' +
-        '<input class="project-label-input" data-role="group-project" data-project="' + escapeAttr(group.name) + '" value="' + escapeAttr(group.name) + '" title="Rename project (applies to every resource in it)" style="color: var(--series-' + colorSlot + ')" />' +
+        '<button type="button" class="collapse-toggle' + (isCollapsed ? ' collapsed' : '') + '" data-project="' + escapeAttr(group.name) + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + ' ' + groupNoun + '">▾</button>' +
+        '<input class="project-label-input" data-role="group-project" data-project="' + escapeAttr(group.name) + '" value="' + escapeAttr(group.name) + '" title="' + renameHint + '" style="color: var(--series-' + colorSlot + ')" />' +
         (isCollapsed ? '<span class="collapse-count">' + visibleResources.length + '</span>' : '') +
         '</div>';
       html += '<div class="cell track-cell project-track' + groupClass + '" data-project="' + escapeAttr(group.name) + '" style="grid-column: span ' + TOTAL_WEEKS + '">';
@@ -889,7 +934,7 @@
         var pTitle = escapeAttr(group.name + ': ' + rangeLabelShort(range.start, range.end) + ' (' + weeks + 'w)');
         html += '<div class="project-bar" title="' + pTitle + '" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
       } else {
-        html += '<div class="project-empty">No resources in this project yet</div>';
+        html += '<div class="project-empty">' + (viewMode === 'resource' ? 'No assignments for this resource yet' : 'No resources in this project yet') + '</div>';
       }
       html += '</div>';
 
@@ -898,21 +943,25 @@
       visibleResources.forEach(function (r) {
         var rowClass = (rowCounter % 2 === 1) ? ' row-even' : '';
         rowCounter++;
+        var entryKey = entryGroupKey(r);
+        var entryRole = viewMode === 'resource' ? 'entry-project' : 'name';
+        var entryValue = viewMode === 'resource' ? r.project : r.name;
+        var entryPlaceholder = viewMode === 'resource' ? 'Project' : 'Name';
 
-        html += '<div class="cell label-cell resource-label' + rowClass + '" data-id="' + r.id + '" data-project="' + escapeAttr(r.project) + '">' +
+        html += '<div class="cell label-cell resource-label' + rowClass + '" data-id="' + r.id + '" data-project="' + escapeAttr(entryKey) + '">' +
           '<div class="resource-label-top">' +
-            '<input class="name-input" data-id="' + r.id + '" data-role="name" value="' + escapeAttr(r.name) + '" />' +
+            '<input class="name-input" data-id="' + r.id + '" data-role="' + entryRole + '" value="' + escapeAttr(entryValue) + '" placeholder="' + entryPlaceholder + '" />' +
             '<span class="alloc-wrap">' +
             '<input class="alloc-input" type="number" min="0" data-id="' + r.id + '" data-role="alloc" value="' + r.allocation + '" />' +
             '<span class="alloc-unit">%</span>' +
             '</span>' +
-            '<button class="del-btn" data-id="' + r.id + '" title="Remove resource">✕</button>' +
+            '<button class="del-btn" data-id="' + r.id + '" title="Remove ' + (viewMode === 'resource' ? 'assignment' : 'resource') + '">✕</button>' +
           '</div>' +
           '</div>';
 
         var left = r.start * WEEK_WIDTH;
         var width = r.duration * WEEK_WIDTH;
-        html += '<div class="cell track-cell' + rowClass + '" data-track-for="' + r.id + '" data-project="' + escapeAttr(r.project) + '" style="grid-column: span ' + TOTAL_WEEKS + '">' +
+        html += '<div class="cell track-cell' + rowClass + '" data-track-for="' + r.id + '" data-project="' + escapeAttr(entryKey) + '" style="grid-column: span ' + TOTAL_WEEKS + '">' +
           '<div class="bar" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + colorSlot + ')" title="' +
           escapeAttr(barTitle(r)) + '">' +
           '<span class="handle left" data-id="' + r.id + '" data-mode="resize-left"></span>' +
@@ -927,7 +976,7 @@
 
     var projectListEl = document.getElementById('projectList');
     if (projectListEl) {
-      projectListEl.innerHTML = groups.map(function (g) {
+      projectListEl.innerHTML = projectGroups().map(function (g) {
         return '<option value="' + escapeAttr(g.name) + '"></option>';
       }).join('');
     }
@@ -979,7 +1028,7 @@
     var toggle = e.target.closest('.collapse-toggle');
     if (toggle) {
       var pname = toggle.dataset.project;
-      collapsedProjects[pname] = !collapsedProjects[pname];
+      collapsedGroups[viewMode][pname] = !collapsedGroups[viewMode][pname];
       render();
       return;
     }
@@ -1041,6 +1090,24 @@
     render();
   });
 
+  projectFilterChips.addEventListener('click', function (e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    var allNames = projectGroups().map(function (g) { return g.name; });
+    if (chip.dataset.filterAll) {
+      projectFilter = null;
+    } else if (chip.dataset.filterNone) {
+      projectFilter = [];
+    } else {
+      var name = chip.dataset.filterProject;
+      var current = (projectFilter === null) ? allNames.slice() : projectFilter.slice();
+      var idx = current.indexOf(name);
+      if (idx === -1) current.push(name); else current.splice(idx, 1);
+      projectFilter = (current.length === allNames.length) ? null : current;
+    }
+    render();
+  });
+
   grid.addEventListener('input', function (e) {
     var el = e.target;
     if (el.dataset && el.dataset.role === 'name') {
@@ -1049,6 +1116,13 @@
         r.name = el.value;
         var bar = grid.querySelector('.bar[data-id="' + r.id + '"]');
         if (bar) bar.title = barTitle(r);
+      }
+    } else if (el.dataset && el.dataset.role === 'entry-project') {
+      var r3 = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r3) {
+        r3.project = el.value;
+        var bar3 = grid.querySelector('.bar[data-id="' + r3.id + '"]');
+        if (bar3) bar3.title = barTitle(r3);
       }
     } else if (el.dataset && el.dataset.role === 'alloc') {
       var r2 = resources.find(function (r) { return r.id === Number(el.dataset.id); });
@@ -1069,11 +1143,22 @@
     var el = e.target;
     if (el.dataset && el.dataset.role === 'group-project') {
       var oldName = el.dataset.project;
-      var newName = el.value.trim() || 'Untitled Project';
+      var newName = el.value.trim() || (viewMode === 'resource' ? 'Untitled' : 'Untitled Project');
       if (newName !== oldName) {
         resources.forEach(function (r) {
-          if (r.project === oldName) r.project = newName;
+          if (viewMode === 'resource') {
+            if (keyForResource(r) === oldName) r.name = newName;
+          } else if (r.project === oldName) {
+            r.project = newName;
+          }
         });
+      }
+      render();
+      scheduleSave();
+    } else if (el.dataset && el.dataset.role === 'entry-project') {
+      var r4 = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r4) {
+        r4.project = r4.project.trim() || 'Untitled Project';
       }
       render();
       scheduleSave();
@@ -1100,12 +1185,12 @@
     var startX = e.clientX;
     var origStart = resource.start;
     var origDuration = resource.duration;
-    var origProject = resource.project;
-    var hoverProject = origProject;
+    var origGroupKey = entryGroupKey(resource);
+    var hoverGroupKey = origGroupKey;
     var hoveredResourceId = null;
     var hoveredInsertAfter = false;
     var badge = barEl.querySelector('.badge');
-    var dragGroups = projectGroups();
+    var dragGroups = displayGroups();
     var groupIndex = dragGroups.findIndex(function (g) { return g.resources.indexOf(resource) !== -1; });
 
     e.preventDefault();
@@ -1141,7 +1226,7 @@
       renderPanel();
 
       dragTip.textContent = rangeLabelShort(resource.start, resource.start + resource.duration) + ' (' + resource.duration + 'w)' +
-        (hoverProject !== origProject ? ' → ' + hoverProject : '');
+        (hoverGroupKey !== origGroupKey ? ' → ' + hoverGroupKey : '');
       dragTip.style.left = e.clientX + 'px';
       dragTip.style.top = e.clientY + 'px';
     }
@@ -1171,12 +1256,12 @@
 
         var overEl = document.elementFromPoint(ev.clientX, ev.clientY);
         var rowEl = overEl ? overEl.closest('[data-project]') : null;
-        var overProject = rowEl ? rowEl.dataset.project : null;
-        hoverProject = overProject || origProject;
-        setDropHighlight(hoverProject !== origProject ? hoverProject : null);
+        var overGroupKey = rowEl ? rowEl.dataset.project : null;
+        hoverGroupKey = overGroupKey || origGroupKey;
+        setDropHighlight(hoverGroupKey !== origGroupKey ? hoverGroupKey : null);
 
         var overResourceId = rowEl ? Number(rowEl.dataset.id || rowEl.dataset.trackFor) : NaN;
-        if (hoverProject === origProject && overResourceId && overResourceId !== resource.id) {
+        if (hoverGroupKey === origGroupKey && overResourceId && overResourceId !== resource.id) {
           var rect = rowEl.getBoundingClientRect();
           hoveredResourceId = overResourceId;
           hoveredInsertAfter = ev.clientY > (rect.top + rect.height / 2);
@@ -1204,9 +1289,15 @@
       setDropHighlight(null);
       setReorderHighlight(null);
       if (mode === 'move') {
-        if (hoverProject !== origProject) {
-          resource.project = hoverProject;
-          flashStatus('Moved ' + (resource.name || 'resource') + ' to ' + hoverProject);
+        if (hoverGroupKey !== origGroupKey) {
+          if (viewMode === 'resource') {
+            var movedLabel = resource.project || 'assignment';
+            resource.name = hoverGroupKey;
+            flashStatus('Moved ' + movedLabel + ' to ' + hoverGroupKey);
+          } else {
+            resource.project = hoverGroupKey;
+            flashStatus('Moved ' + (resource.name || 'resource') + ' to ' + hoverGroupKey);
+          }
         } else if (hoveredResourceId) {
           reorderResource(resource.id, hoveredResourceId, hoveredInsertAfter);
         }
@@ -1255,6 +1346,12 @@
       flashStatus('Could not save file');
     });
   }
+
+  viewToggleBtn.addEventListener('click', function () {
+    viewMode = viewMode === 'project' ? 'resource' : 'project';
+    try { localStorage.setItem('gantt-view-mode', viewMode); } catch (err) {}
+    render();
+  });
 
   openFileBtn.addEventListener('click', handleOpenFile);
   saveAsBtn.addEventListener('click', handleSaveAsNewFile);
