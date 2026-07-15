@@ -326,11 +326,7 @@
         <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
         <button type="button" class="ghost-btn" id="saveAsBtn">Save As…</button>
         <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
-        <button type="button" class="ghost-btn" id="unlinkBtn" style="display:none">Unlink</button>
         <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
-        <button type="button" class="ghost-btn" id="importBtn">Import JSON</button>
-        <input type="file" id="importFile" accept="application/json" style="display:none" />
-        <button type="button" class="ghost-btn danger" id="resetBtn">Clear All</button>
         <span class="save-status" id="saveStatus">—</span>
       </div>
 
@@ -413,11 +409,7 @@
   var openFileBtn = document.getElementById('openFileBtn');
   var saveAsBtn = document.getElementById('saveAsBtn');
   var reconnectBtn = document.getElementById('reconnectBtn');
-  var unlinkBtn = document.getElementById('unlinkBtn');
   var exportBtn = document.getElementById('exportBtn');
-  var importBtn = document.getElementById('importBtn');
-  var importFile = document.getElementById('importFile');
-  var resetBtn = document.getElementById('resetBtn');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -658,7 +650,6 @@
     openFileBtn.style.display = fsApiSupported ? '' : 'none';
     saveAsBtn.style.display = fsApiSupported ? '' : 'none';
     reconnectBtn.style.display = (fsApiSupported && pendingReconnectHandle) ? '' : 'none';
-    unlinkBtn.style.display = (fsApiSupported && fileHandle) ? '' : 'none';
     if (pendingReconnectHandle) {
       reconnectBtn.textContent = 'Reconnect ' + (pendingReconnectFileName || 'file');
     }
@@ -740,7 +731,9 @@
   function renderPanelFilterChips() {
     var groups = projectGroups();
     var isAll = panelFilter === null;
+    var isNone = !isAll && panelFilter.length === 0;
     var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All projects</button>';
+    html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
     html += groups.map(function (g) {
       var checked = isAll || panelFilter.indexOf(g.name) !== -1;
       return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-project="' + escapeAttr(g.name) + '">' + escapeAttr(g.name) + '</button>';
@@ -752,7 +745,9 @@
     var names = uniqueResourceNames();
     resourceFilterBar.style.display = names.length ? '' : 'none';
     var isAll = resourceFilter === null;
+    var isNone = !isAll && resourceFilter.length === 0;
     var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All resources</button>';
+    html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
     html += names.map(function (n) {
       var checked = isAll || resourceFilter.indexOf(n) !== -1;
       return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-resource="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
@@ -997,7 +992,9 @@
     if (!chip) return;
     var allNames = projectGroups().map(function (g) { return g.name; });
     if (chip.dataset.filterAll) {
-      panelFilter = (panelFilter === null) ? [] : null;
+      panelFilter = null;
+    } else if (chip.dataset.filterNone) {
+      panelFilter = [];
     } else {
       var name = chip.dataset.filterProject;
       var current = (panelFilter === null) ? allNames.slice() : panelFilter.slice();
@@ -1013,7 +1010,9 @@
     if (!chip) return;
     var allNames = uniqueResourceNames();
     if (chip.dataset.filterAll) {
-      resourceFilter = (resourceFilter === null) ? [] : null;
+      resourceFilter = null;
+    } else if (chip.dataset.filterNone) {
+      resourceFilter = [];
     } else {
       var name = chip.dataset.filterResource;
       var current = (resourceFilter === null) ? allNames.slice() : resourceFilter.slice();
@@ -1262,16 +1261,7 @@
     });
   });
 
-  unlinkBtn.addEventListener('click', function () {
-    fileHandle = null;
-    fileName = null;
-    idbDel(IDB_HANDLE_KEY);
-    updateFileUi();
-    updateLockState();
-    flashStatus('Unlinked — open or create a data file to keep editing');
-  });
-
-  // ---- Export / Import / Clear All ----
+  // ---- Export ----
   exportBtn.addEventListener('click', function () {
     var data = {
       version: 2, unit: 'week', resources: resources, nextId: nextId, colorSeq: colorSeq,
@@ -1287,44 +1277,13 @@
     flashStatus('Exported gantt-project.json');
   });
 
-  importBtn.addEventListener('click', function () { importFile.click(); });
-
-  importFile.addEventListener('change', function () {
-    var file = importFile.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function () {
-      try {
-        var data = JSON.parse(reader.result);
-        if (!applyState(data)) throw new Error('unrecognized file shape');
-        render();
-        scheduleSave();
-        flashStatus('Imported ' + file.name);
-      } catch (err) {
-        flashStatus('Could not read that file — expected a Gantt export');
-      }
-    };
-    reader.readAsText(file);
-    importFile.value = '';
-  });
-
-  resetBtn.addEventListener('click', function () {
-    if (!confirm('Clear all resources? This cannot be undone.')) return;
-    resources = [];
-    nextId = 1;
-    colorSeq = 0;
-    render();
-    scheduleSave();
-    flashStatus('Cleared all resources');
-  });
-
   // ---- Init ----
   function init() {
     if (!fsApiSupported) {
       render();
       updateFileUi();
       updateLockState();
-      flashStatus('This browser can\'t link a data file — use Export/Import JSON to save and reload changes');
+      flashStatus('This browser can\'t link a data file — use Export JSON to save changes');
       return;
     }
     idbGet(IDB_HANDLE_KEY).then(function (handle) {
