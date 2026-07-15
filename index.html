@@ -167,6 +167,10 @@
   .lock-overlay-inner p { margin: 0 0 14px; font-size: 13px; color: var(--text-secondary); }
   .lock-overlay-actions { display: flex; gap: 10px; justify-content: center; }
 
+  .resource-filter { margin-bottom: 12px; }
+  .resource-filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .resource-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
   .gantt-card {
     background: var(--surface-1);
     border: 1px solid var(--border);
@@ -349,6 +353,11 @@
           <span class="hint">Bars default to a one-week span starting after this resource's last entry in the same project</span>
         </form>
 
+        <div class="resource-filter" id="resourceFilterBar" style="display:none">
+          <div class="resource-filter-label">Filter resources</div>
+          <div class="resource-filter-chips" id="resourceFilterChips"></div>
+        </div>
+
         <div class="gantt-card">
           <div class="gantt-scroll">
             <div class="gantt-grid" id="ganttGrid"></div>
@@ -416,6 +425,8 @@
   var panelList = document.getElementById('panelList');
   var panelClose = document.getElementById('panelClose');
   var panelFilterChips = document.getElementById('panelFilterChips');
+  var resourceFilterBar = document.getElementById('resourceFilterBar');
+  var resourceFilterChips = document.getElementById('resourceFilterChips');
   var editableArea = document.getElementById('editableArea');
   var lockOverlay = document.getElementById('lockOverlay');
   var gateOpenBtn = document.getElementById('gateOpenBtn');
@@ -431,6 +442,7 @@
   var selectedWeekIndex = null;
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
   var collapsedProjects = {}; // project name -> true when its resource rows are hidden
+  var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
 
   var fsApiSupported = !!(window.showOpenFilePicker && window.showSaveFilePicker);
   var fileHandle = null;
@@ -514,6 +526,16 @@
       map[key].resources.push(r);
     });
     return order.map(function (key) { return map[key]; });
+  }
+
+  function uniqueResourceNames() {
+    var seen = {};
+    var names = [];
+    resources.forEach(function (r) {
+      var n = (r.name || 'Untitled').trim() || 'Untitled';
+      if (!seen[n]) { seen[n] = true; names.push(n); }
+    });
+    return names;
   }
 
   // Reorders the flat resources array so `movedId` sits directly before/after `targetId`.
@@ -726,6 +748,18 @@
     panelFilterChips.innerHTML = html;
   }
 
+  function renderResourceFilterChips() {
+    var names = uniqueResourceNames();
+    resourceFilterBar.style.display = names.length ? '' : 'none';
+    var isAll = resourceFilter === null;
+    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All resources</button>';
+    html += names.map(function (n) {
+      var checked = isAll || resourceFilter.indexOf(n) !== -1;
+      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-resource="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
+    }).join('');
+    resourceFilterChips.innerHTML = html;
+  }
+
   function renderPanel() {
     renderPanelFilterChips();
 
@@ -785,6 +819,8 @@
   }
 
   function render() {
+    renderResourceFilterChips();
+
     grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
     var bg = gridBackground();
     grid.style.backgroundImage = bg.backgroundImage;
@@ -813,9 +849,17 @@
 
     // Project + resource rows, grouped by project
     var groups = projectGroups();
+    var isFiltered = resourceFilter !== null;
     var rowCounter = 0;
+    var renderedAny = false;
     groups.forEach(function (group, gi) {
-      var range = projectRangeFor(group.resources);
+      var visibleResources = isFiltered
+        ? group.resources.filter(function (r) { return resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1; })
+        : group.resources;
+      if (isFiltered && !visibleResources.length) return;
+      renderedAny = true;
+
+      var range = projectRangeFor(visibleResources);
       var colorSlot = (gi % 8) + 1;
       var groupClass = gi > 0 ? ' group-divider' : '';
       var isCollapsed = !!collapsedProjects[group.name];
@@ -823,7 +867,7 @@
       html += '<div class="cell label-cell' + groupClass + '" data-project="' + escapeAttr(group.name) + '">' +
         '<button type="button" class="collapse-toggle' + (isCollapsed ? ' collapsed' : '') + '" data-project="' + escapeAttr(group.name) + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + ' project">▾</button>' +
         '<input class="project-label-input" data-role="group-project" data-project="' + escapeAttr(group.name) + '" value="' + escapeAttr(group.name) + '" title="Rename project (applies to every resource in it)" style="color: var(--series-' + colorSlot + ')" />' +
-        (isCollapsed ? '<span class="collapse-count">' + group.resources.length + '</span>' : '') +
+        (isCollapsed ? '<span class="collapse-count">' + visibleResources.length + '</span>' : '') +
         '</div>';
       html += '<div class="cell track-cell project-track' + groupClass + '" data-project="' + escapeAttr(group.name) + '" style="grid-column: span ' + TOTAL_WEEKS + '">';
       if (range) {
@@ -839,7 +883,7 @@
 
       if (isCollapsed) return;
 
-      group.resources.forEach(function (r) {
+      visibleResources.forEach(function (r) {
         var rowClass = (rowCounter % 2 === 1) ? ' row-even' : '';
         rowCounter++;
 
@@ -876,11 +920,13 @@
       }).join('');
     }
 
-    if (!resources.length) {
+    if (!resources.length || !renderedAny) {
       var note = document.createElement('div');
       note.className = 'empty-state';
       note.style.gridColumn = '1 / -1';
-      note.textContent = 'No resources yet — add one above to start building the timeline.';
+      note.textContent = resources.length
+        ? 'No resources match the current filter.'
+        : 'No resources yet — add one above to start building the timeline.';
       grid.appendChild(note);
     }
 
@@ -960,6 +1006,22 @@
       panelFilter = (current.length === allNames.length) ? null : current;
     }
     renderPanel();
+  });
+
+  resourceFilterChips.addEventListener('click', function (e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    var allNames = uniqueResourceNames();
+    if (chip.dataset.filterAll) {
+      resourceFilter = (resourceFilter === null) ? [] : null;
+    } else {
+      var name = chip.dataset.filterResource;
+      var current = (resourceFilter === null) ? allNames.slice() : resourceFilter.slice();
+      var idx = current.indexOf(name);
+      if (idx === -1) current.push(name); else current.splice(idx, 1);
+      resourceFilter = (current.length === allNames.length) ? null : current;
+    }
+    render();
   });
 
   grid.addEventListener('input', function (e) {
@@ -1071,8 +1133,8 @@
       var group = dragGroups[groupIndex];
       if (!group) return;
       var range = projectRangeFor(group.resources);
-      var tracks = grid.querySelectorAll('.project-track');
-      var groupTrackEl = tracks[groupIndex];
+      var esc = (window.CSS && CSS.escape) ? CSS.escape(group.name) : group.name.replace(/"/g, '\\"');
+      var groupTrackEl = grid.querySelector('.project-track[data-project="' + esc + '"]');
       if (!groupTrackEl) return;
       var pBar = groupTrackEl.querySelector('.project-bar');
       if (range && pBar) {
