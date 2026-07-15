@@ -198,22 +198,19 @@
     display: flex; align-items: center;
   }
   .week-cell {
-    display: flex; align-items: center; justify-content: center;
-    padding: 4px 2px;
+    display: flex; align-items: center; justify-content: flex-start;
+    padding: 4px 6px;
     font-size: 11px; font-weight: 600; color: var(--text-secondary);
     border-bottom: 1px solid var(--baseline);
     border-left: 1px solid var(--gridline);
     background: var(--surface-1);
     cursor: pointer;
-    text-align: center;
+    text-align: left;
   }
   .week-cell:hover { background: color-mix(in srgb, var(--series-1) 10%, var(--surface-1)); }
   .week-cell.today {
-    flex-direction: column; gap: 1px;
     background: color-mix(in srgb, var(--series-1) 14%, var(--surface-1)); color: var(--series-1);
   }
-  .week-today-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
-  .week-today-date { font-size: 11px; font-weight: 700; }
   .week-cell.selected {
     background: color-mix(in srgb, var(--series-1) 20%, var(--surface-1));
     box-shadow: inset 0 0 0 1px var(--series-1);
@@ -482,16 +479,7 @@
     return fmtShort(dateForWeek(startW)) + ' – ' + fmtShort(weekEndDate(endWExclusive - 1));
   }
   function weekCellLabel(w) {
-    var mon = dateForWeek(w);
-    var sun = weekEndDate(w);
-    if (mon.getMonth() === sun.getMonth()) {
-      return mon.toLocaleDateString('en-US', { month: 'short' }) + ' ' + mon.getDate() + '–' + sun.getDate();
-    }
-    return fmtShort(mon) + '–' + fmtShort(sun);
-  }
-  function todayCellLabel() {
-    var t = new Date();
-    return '<span class="week-today-tag">Today</span><span class="week-today-date">' + fmtShort(t) + '</span>';
+    return fmtShort(dateForWeek(w));
   }
   function weekLabelLong(w) {
     return 'Week of ' + fmtLong(dateForWeek(w));
@@ -819,7 +807,7 @@
       var isToday = (w === tIdx);
       var isSelected = (w === selectedWeekIndex);
       html += '<div class="cell week-cell' + (isToday ? ' today' : '') + (isSelected ? ' selected' : '') + '" data-week-index="' + w + '" title="' + escapeAttr(weekLabelLong(w)) + '">' +
-        (isToday ? todayCellLabel() : weekCellLabel(w)) +
+        weekCellLabel(w) +
         '</div>';
     }
 
