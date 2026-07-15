@@ -1,0 +1,928 @@
+<title>Project Gantt Planner</title>
+<style>
+  .app {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #008300; --series-3: #e87ba4; --series-4: #eda100;
+    --series-5: #1baf7a; --series-6: #eb6834; --series-7: #4a3aa7; --series-8: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .app {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #008300; --series-3: #d55181; --series-4: #c98500;
+      --series-5: #199e70; --series-6: #d95926; --series-7: #9085e9; --series-8: #e66767;
+    }
+  }
+  :root[data-theme="dark"] .app {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #008300; --series-3: #d55181; --series-4: #c98500;
+    --series-5: #199e70; --series-6: #d95926; --series-7: #9085e9; --series-8: #e66767;
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .app {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header h1 { font-size: 20px; margin: 0 0 4px; }
+  .header p { margin: 0 0 18px; color: var(--text-secondary); font-size: 13px; }
+
+  .add-form {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; color: var(--text-secondary); }
+  .field input {
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 9px;
+    border: 1px solid var(--baseline);
+    border-radius: 6px;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    width: 160px;
+  }
+  .field.alloc input { width: 90px; }
+  .add-form button {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    background: var(--series-1);
+    color: #fff;
+    cursor: pointer;
+  }
+  .add-form button:hover { filter: brightness(1.08); }
+  .add-form .hint { font-size: 11px; color: var(--text-muted); margin-left: auto; align-self: center; }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; margin: -6px 0 14px; }
+  .ghost-btn {
+    font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary);
+    cursor: pointer;
+  }
+  .ghost-btn:hover { background: var(--page-plane); }
+  .ghost-btn.danger:hover { color: var(--series-8); border-color: var(--series-8); }
+  .save-status { margin-left: auto; font-size: 11px; color: var(--text-muted); transition: color .2s; }
+  .save-status.flash { color: var(--series-2); font-weight: 600; }
+
+  .layout { display: flex; align-items: flex-start; gap: 20px; }
+  .main-col { flex: 1; min-width: 0; }
+
+  .side-panel {
+    width: 280px; flex: none;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; position: sticky; top: 24px;
+    display: none;
+  }
+  .side-panel.open { display: block; }
+  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .panel-date-label { font-size: 11px; color: var(--text-muted); }
+  .panel-date { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .panel-close {
+    border: none; background: transparent; color: var(--text-muted);
+    font-size: 14px; cursor: pointer; border-radius: 4px; padding: 2px 6px; line-height: 1;
+  }
+  .panel-close:hover { color: var(--series-8); background: var(--page-plane); }
+  .panel-summary {
+    font-size: 12px; color: var(--text-secondary); margin: 10px 0 14px;
+    padding-bottom: 12px; border-bottom: 1px solid var(--gridline);
+  }
+  .panel-list { display: flex; flex-direction: column; gap: 12px; }
+  .panel-row { display: flex; align-items: center; gap: 8px; }
+  .panel-row .swatch { margin-top: 0; }
+  .panel-row-main { flex: 1; min-width: 0; }
+  .panel-row-name {
+    font-size: 13px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .panel-row-project { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .panel-row-range { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .panel-row-alloc { font-size: 13px; font-weight: 700; flex: none; }
+
+  .gantt-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .gantt-scroll { overflow-x: auto; }
+  .gantt-grid { display: grid; }
+
+  .cell { }
+  .label-cell {
+    position: sticky; left: 0; z-index: 3;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--gridline);
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 10px;
+    min-height: 46px;
+  }
+  .label-cell.header-cell { min-height: 30px; }
+  .label-cell.month-label { min-height: 24px; }
+
+  .month-cell {
+    font-size: 11px; color: var(--text-secondary); font-weight: 600;
+    padding: 5px 6px;
+    border-bottom: 1px solid var(--gridline);
+    border-left: 1px solid var(--gridline);
+    background: var(--surface-1);
+    display: flex; align-items: center;
+  }
+  .day-cell {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 4px 0 6px;
+    font-size: 10px; color: var(--text-muted);
+    border-bottom: 1px solid var(--baseline);
+    background: var(--surface-1);
+    cursor: pointer;
+  }
+  .day-cell.weekend { background: var(--page-plane); }
+  .day-cell:hover { background: color-mix(in srgb, var(--series-1) 10%, var(--surface-1)); }
+  .day-cell .dom {
+    font-size: 11px; color: var(--text-secondary); width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  }
+  .day-cell.today .dom { background: var(--series-1); color: #fff; font-weight: 700; }
+  .day-cell.today .dow { color: var(--series-1); font-weight: 700; }
+  .day-cell.selected {
+    background: color-mix(in srgb, var(--series-1) 20%, var(--surface-1));
+    box-shadow: inset 0 0 0 1px var(--series-1);
+  }
+
+  .track-cell {
+    position: relative;
+    border-bottom: 1px solid var(--gridline);
+    min-height: 54px;
+  }
+  .row-even .track-cell, .row-even .label-cell.resource-label { background: color-mix(in srgb, var(--page-plane) 55%, var(--surface-1)); }
+
+  .project-label-input {
+    font: inherit; font-weight: 600; font-size: 13px;
+    border: 1px solid transparent; background: transparent;
+    border-radius: 4px; padding: 4px 6px; width: 100%; min-width: 0;
+  }
+  .project-label-input:hover, .project-label-input:focus { border-color: var(--baseline); background: var(--page-plane); }
+  .project-track { min-height: 40px; }
+  .group-divider { border-top: 2px solid var(--border); }
+  .project-bar {
+    position: absolute; top: 9px; height: 20px; border-radius: 6px;
+    border: 1px solid var(--baseline);
+    background-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+    background-image: repeating-linear-gradient(45deg, var(--baseline) 0 2px, transparent 2px 9px);
+  }
+  .project-empty {
+    position: absolute; left: 12px; top: 12px; font-size: 12px; color: var(--text-muted);
+  }
+  .project-caption {
+    position: absolute; top: -1px; font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    white-space: nowrap; transform: translateY(-100%);
+  }
+
+  .bar {
+    position: absolute; top: 10px; height: 26px; border-radius: 6px;
+    display: flex; align-items: center; padding: 0 8px;
+    box-shadow: 0 0 0 2px var(--surface-1);
+    cursor: grab; user-select: none;
+  }
+  .row-even .bar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--page-plane) 55%, var(--surface-1)); }
+  .bar:active { cursor: grabbing; }
+  .bar .badge {
+    color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap;
+    overflow: hidden; text-overflow: clip; pointer-events: none;
+  }
+  .bar .handle {
+    position: absolute; top: 0; bottom: 0; width: 10px; cursor: ew-resize;
+  }
+  .bar .handle.left { left: -2px; }
+  .bar .handle.right { right: -2px; }
+
+  .dur-label {
+    position: absolute; top: 15px; font-size: 11px; color: var(--text-secondary);
+    white-space: nowrap; pointer-events: none;
+  }
+
+  .row-label.resource-label { gap: 8px; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 6px; }
+  .resource-label-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .resource-label-top { display: flex; align-items: center; gap: 6px; }
+  .name-input {
+    font: inherit; font-size: 13px; border: 1px solid transparent; background: transparent;
+    color: var(--text-primary); border-radius: 4px; padding: 4px 6px; width: 84px;
+    min-width: 0;
+  }
+  .name-input:hover, .name-input:focus { border-color: var(--baseline); background: var(--page-plane); }
+  .project-input {
+    font: inherit; font-size: 11px; border: 1px solid transparent; background: transparent;
+    color: var(--text-muted); border-radius: 4px; padding: 2px 6px; width: 100%;
+    min-width: 0;
+  }
+  .project-input:hover, .project-input:focus { border-color: var(--baseline); background: var(--page-plane); color: var(--text-secondary); }
+  .alloc-wrap {
+    display: flex; align-items: center; gap: 2px; flex: none;
+  }
+  .alloc-input {
+    font: inherit; font-size: 12px; border: 1px solid var(--baseline); background: var(--page-plane);
+    color: var(--text-primary); border-radius: 4px; padding: 4px 4px; width: 48px; text-align: right;
+  }
+  .alloc-unit { font-size: 11px; color: var(--text-muted); }
+  .del-btn {
+    margin-left: auto; flex: none; border: none; background: transparent; color: var(--text-muted);
+    font-size: 14px; cursor: pointer; border-radius: 4px; padding: 2px 6px; line-height: 1;
+  }
+  .del-btn:hover { color: var(--series-8); background: var(--page-plane); }
+
+  .empty-state {
+    padding: 28px; text-align: center; color: var(--text-muted); font-size: 13px;
+  }
+
+  .drag-tip {
+    position: fixed; pointer-events: none; z-index: 50;
+    background: var(--text-primary); color: var(--surface-1);
+    font-size: 11px; padding: 4px 8px; border-radius: 5px;
+    transform: translate(-50%, -130%);
+    white-space: nowrap; display: none;
+  }
+</style>
+
+<div class="app" id="app">
+  <div class="layout">
+    <div class="main-col">
+      <div class="header">
+        <h1>Project Gantt Planner</h1>
+        <p>Add resources below and tag each with a project. Drag a resource bar to move it, drag its edges to change duration, or click a date in the timeline to see who's allocated that day — each project gets its own timeline bar that automatically fits around its resources.</p>
+      </div>
+
+      <form class="add-form" id="addForm">
+        <div class="field">
+          <label for="projectInput">Project</label>
+          <input id="projectInput" type="text" list="projectList" placeholder="e.g. Website Redesign" required maxlength="60" />
+          <datalist id="projectList"></datalist>
+        </div>
+        <div class="field">
+          <label for="nameInput">Resource name</label>
+          <input id="nameInput" type="text" placeholder="e.g. Alice" required maxlength="40" />
+        </div>
+        <div class="field alloc">
+          <label for="allocInput">Allocation</label>
+          <input id="allocInput" type="number" min="0" step="1" value="100" required />
+        </div>
+        <button type="submit">Add resource</button>
+        <span class="hint">Bars default to a 5-day span starting after this resource's last entry in the same project</span>
+      </form>
+
+      <div class="toolbar">
+        <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
+        <button type="button" class="ghost-btn" id="importBtn">Import JSON</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none" />
+        <button type="button" class="ghost-btn danger" id="resetBtn">Reset</button>
+        <span class="save-status" id="saveStatus">Changes save automatically in this browser</span>
+      </div>
+
+      <div class="gantt-card">
+        <div class="gantt-scroll">
+          <div class="gantt-grid" id="ganttGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side-panel" id="sidePanel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-date-label">Selected date</div>
+          <div class="panel-date" id="panelDate">—</div>
+        </div>
+        <button type="button" class="panel-close" id="panelClose" title="Close">✕</button>
+      </div>
+      <div class="panel-summary" id="panelSummary"></div>
+      <div class="panel-list" id="panelList"></div>
+    </aside>
+  </div>
+</div>
+
+<div class="drag-tip" id="dragTip"></div>
+
+<script>
+(function () {
+  var TOTAL_DAYS = 120;
+  var DAY_WIDTH = 28;
+  var LABEL_WIDTH = 220;
+  var DAY_OFFSET = -14; // baseDate = today + DAY_OFFSET
+
+  var grid = document.getElementById('ganttGrid');
+  var dragTip = document.getElementById('dragTip');
+  var addForm = document.getElementById('addForm');
+  var projectInput = document.getElementById('projectInput');
+  var nameInput = document.getElementById('nameInput');
+  var allocInput = document.getElementById('allocInput');
+  var exportBtn = document.getElementById('exportBtn');
+  var importBtn = document.getElementById('importBtn');
+  var importFile = document.getElementById('importFile');
+  var resetBtn = document.getElementById('resetBtn');
+  var saveStatus = document.getElementById('saveStatus');
+  var sidePanel = document.getElementById('sidePanel');
+  var panelDate = document.getElementById('panelDate');
+  var panelSummary = document.getElementById('panelSummary');
+  var panelList = document.getElementById('panelList');
+  var panelClose = document.getElementById('panelClose');
+
+  var STORAGE_KEY = 'gantt-planner-state-v1';
+
+  var resources = [];
+  var nextId = 1;
+  var colorSeq = 0;
+  var selectedDayIndex = null;
+
+  function baseDate() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + DAY_OFFSET);
+    return d;
+  }
+  function dateForIndex(i) {
+    var d = new Date(baseDate());
+    d.setDate(d.getDate() + i);
+    return d;
+  }
+  function todayIndex() { return -DAY_OFFSET; }
+  function fmtShort(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function seedDemo() {
+    addResourceInternal('Alice', 100, todayIndex(), 6, 'Website Redesign');
+    addResourceInternal('Bob', 50, todayIndex() + 3, 8, 'Website Redesign');
+    addResourceInternal('Carol', 75, todayIndex() + 10, 10, 'Mobile App Launch');
+  }
+
+  function addResourceInternal(name, allocation, start, duration, project) {
+    resources.push({
+      id: nextId++,
+      name: name,
+      project: project || 'Untitled Project',
+      allocation: allocation,
+      start: clamp(start, 0, TOTAL_DAYS - 1),
+      duration: Math.max(1, duration),
+      colorSlot: (colorSeq % 8) + 1
+    });
+    colorSeq++;
+  }
+
+  function projectRangeFor(list) {
+    if (!list.length) return null;
+    var start = Math.min.apply(null, list.map(function (r) { return r.start; }));
+    var end = Math.max.apply(null, list.map(function (r) { return r.start + r.duration; }));
+    return { start: start, end: end };
+  }
+
+  function projectGroups() {
+    var order = [];
+    var map = {};
+    resources.forEach(function (r) {
+      var key = r.project || 'Untitled Project';
+      if (!map[key]) { map[key] = { name: key, resources: [] }; order.push(key); }
+      map[key].resources.push(r);
+    });
+    return order.map(function (key) { return map[key]; });
+  }
+
+  // ---- Persistence ----
+  var saveTimer = null;
+  var statusTimer = null;
+
+  function flashStatus(text) {
+    saveStatus.textContent = text;
+    saveStatus.classList.add('flash');
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(function () { saveStatus.classList.remove('flash'); }, 1200);
+  }
+
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveToStorage, 400);
+  }
+
+  function saveToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1, resources: resources, nextId: nextId, colorSeq: colorSeq
+      }));
+      flashStatus('Saved ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+    } catch (err) {
+      flashStatus('Autosave unavailable in this browser — use Export to back up');
+    }
+  }
+
+  function applyState(data) {
+    if (!data || !Array.isArray(data.resources)) return false;
+    resources = data.resources.map(function (r) {
+      return {
+        id: Number(r.id),
+        name: String(r.name || ''),
+        project: String(r.project || 'Untitled Project'),
+        allocation: isFinite(Number(r.allocation)) ? Number(r.allocation) : 0,
+        start: clamp(Math.round(Number(r.start)) || 0, 0, TOTAL_DAYS - 1),
+        duration: Math.max(1, Math.round(Number(r.duration)) || 1),
+        colorSlot: (r.colorSlot >= 1 && r.colorSlot <= 8) ? r.colorSlot : 1
+      };
+    });
+    nextId = Number(data.nextId) || (resources.reduce(function (m, r) { return Math.max(m, r.id); }, 0) + 1);
+    colorSeq = Number(data.colorSeq) || resources.length;
+    return true;
+  }
+
+  function loadFromStorage() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      return applyState(JSON.parse(raw));
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function monthSegments() {
+    var segs = [];
+    var cur = null;
+    for (var i = 0; i < TOTAL_DAYS; i++) {
+      var d = dateForIndex(i);
+      var key = d.getFullYear() + '-' + d.getMonth();
+      if (!cur || cur.key !== key) {
+        cur = { key: key, label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), count: 0 };
+        segs.push(cur);
+      }
+      cur.count++;
+    }
+    return segs;
+  }
+
+  function gridBackground() {
+    var todayLeft = todayIndex() * DAY_WIDTH;
+    var images = ['linear-gradient(var(--series-1), var(--series-1))'];
+    var sizes = ['2px 100%'];
+    var positions = [(LABEL_WIDTH + todayLeft) + 'px 0'];
+    var repeats = ['no-repeat'];
+
+    if (selectedDayIndex !== null) {
+      var selLeft = selectedDayIndex * DAY_WIDTH;
+      var tint = 'color-mix(in srgb, var(--series-1) 20%, transparent)';
+      images.push('linear-gradient(' + tint + ', ' + tint + ')');
+      sizes.push(DAY_WIDTH + 'px 100%');
+      positions.push((LABEL_WIDTH + selLeft) + 'px 0');
+      repeats.push('no-repeat');
+    }
+
+    images.push('linear-gradient(to right, var(--gridline) 0 1px, transparent 1px 100%)');
+    sizes.push(DAY_WIDTH + 'px 100%');
+    positions.push(LABEL_WIDTH + 'px 0');
+    repeats.push('repeat-x');
+
+    return {
+      backgroundImage: images.join(', '),
+      backgroundSize: sizes.join(', '),
+      backgroundPosition: positions.join(', '),
+      backgroundRepeat: repeats.join(', ')
+    };
+  }
+
+  function dayLabelLong(i) {
+    return dateForIndex(i).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
+  function renderPanel() {
+    if (selectedDayIndex === null) {
+      sidePanel.classList.remove('open');
+      return;
+    }
+    sidePanel.classList.add('open');
+    panelDate.textContent = dayLabelLong(selectedDayIndex);
+
+    var active = resources.filter(function (r) {
+      return selectedDayIndex >= r.start && selectedDayIndex < r.start + r.duration;
+    });
+    var total = active.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
+    var projectsInvolved = {};
+    active.forEach(function (r) { projectsInvolved[r.project || 'Untitled Project'] = true; });
+    var projectCount = Object.keys(projectsInvolved).length;
+    panelSummary.textContent = active.length
+      ? active.length + ' resource' + (active.length === 1 ? '' : 's') + ' · ' + total + '% total allocation' +
+        (projectCount > 1 ? ' · ' + projectCount + ' projects' : '')
+      : 'No resources allocated on this date';
+
+    panelList.innerHTML = active.map(function (r) {
+      return '<div class="panel-row">' +
+        '<span class="swatch" style="background: var(--series-' + r.colorSlot + ')"></span>' +
+        '<div class="panel-row-main">' +
+          '<div class="panel-row-name">' + escapeAttr(r.name || 'Untitled') + '</div>' +
+          '<div class="panel-row-project">' + escapeAttr(r.project || 'Untitled Project') + '</div>' +
+          '<div class="panel-row-range">' + fmtShort(dateForIndex(r.start)) + '–' + fmtShort(dateForIndex(r.start + r.duration - 1)) + '</div>' +
+        '</div>' +
+        '<div class="panel-row-alloc">' + r.allocation + '%</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function render() {
+    grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_DAYS + ', ' + DAY_WIDTH + 'px)';
+    var bg = gridBackground();
+    grid.style.backgroundImage = bg.backgroundImage;
+    grid.style.backgroundSize = bg.backgroundSize;
+    grid.style.backgroundPosition = bg.backgroundPosition;
+    grid.style.backgroundRepeat = bg.backgroundRepeat;
+
+    var html = '';
+
+    // Month row
+    html += '<div class="cell label-cell header-cell month-label"></div>';
+    monthSegments().forEach(function (seg) {
+      html += '<div class="cell month-cell" style="grid-column: span ' + seg.count + '">' + seg.label + '</div>';
+    });
+
+    // Day row
+    html += '<div class="cell label-cell header-cell">Timeline</div>';
+    var tIdx = todayIndex();
+    for (var i = 0; i < TOTAL_DAYS; i++) {
+      var d = dateForIndex(i);
+      var wd = d.getDay();
+      var isWeekend = (wd === 0 || wd === 6);
+      var isToday = (i === tIdx);
+      var isSelected = (i === selectedDayIndex);
+      html += '<div class="cell day-cell' + (isWeekend ? ' weekend' : '') + (isToday ? ' today' : '') + (isSelected ? ' selected' : '') + '" data-day-index="' + i + '">' +
+        '<span class="dow">' + d.toLocaleDateString('en-US', { weekday: 'narrow' }) + '</span>' +
+        '<span class="dom">' + d.getDate() + '</span>' +
+        '</div>';
+    }
+
+    // Project + resource rows, grouped by project
+    var groups = projectGroups();
+    var rowCounter = 0;
+    groups.forEach(function (group, gi) {
+      var range = projectRangeFor(group.resources);
+      var colorSlot = (gi % 8) + 1;
+      var groupClass = gi > 0 ? ' group-divider' : '';
+
+      html += '<div class="cell label-cell' + groupClass + '">' +
+        '<input class="project-label-input" data-role="group-project" data-project="' + escapeAttr(group.name) + '" value="' + escapeAttr(group.name) + '" title="Rename project (applies to every resource in it)" style="color: var(--series-' + colorSlot + ')" />' +
+        '</div>';
+      html += '<div class="cell track-cell project-track' + groupClass + '" style="grid-column: span ' + TOTAL_DAYS + '">';
+      if (range) {
+        var pLeft = range.start * DAY_WIDTH;
+        var pWidth = (range.end - range.start) * DAY_WIDTH;
+        var days = range.end - range.start;
+        html += '<div class="project-caption" style="left:' + pLeft + 'px; color: var(--series-' + colorSlot + ')">' +
+          fmtShort(dateForIndex(range.start)) + ' – ' + fmtShort(dateForIndex(range.end - 1)) +
+          ' (' + days + 'd)</div>';
+        html += '<div class="project-bar" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
+      } else {
+        html += '<div class="project-empty">No resources in this project yet</div>';
+      }
+      html += '</div>';
+
+      group.resources.forEach(function (r) {
+        var rowClass = (rowCounter % 2 === 1) ? ' row-even' : '';
+        rowCounter++;
+
+        html += '<div class="cell label-cell resource-label' + rowClass + '" data-id="' + r.id + '">' +
+          '<span class="swatch" style="background: var(--series-' + r.colorSlot + ')"></span>' +
+          '<div class="resource-label-main">' +
+            '<div class="resource-label-top">' +
+              '<input class="name-input" data-id="' + r.id + '" data-role="name" value="' + escapeAttr(r.name) + '" />' +
+              '<span class="alloc-wrap">' +
+              '<input class="alloc-input" type="number" min="0" data-id="' + r.id + '" data-role="alloc" value="' + r.allocation + '" />' +
+              '<span class="alloc-unit">%</span>' +
+              '</span>' +
+              '<button class="del-btn" data-id="' + r.id + '" title="Remove resource">✕</button>' +
+            '</div>' +
+            '<input class="project-input" data-id="' + r.id + '" data-role="project" value="' + escapeAttr(r.project) + '" placeholder="Project" title="Project" />' +
+          '</div>' +
+          '</div>';
+
+        var left = r.start * DAY_WIDTH;
+        var width = r.duration * DAY_WIDTH;
+        var tipRight = left + width + 8;
+        html += '<div class="cell track-cell' + rowClass + '" data-track-for="' + r.id + '" style="grid-column: span ' + TOTAL_DAYS + '">' +
+          '<div class="bar" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + r.colorSlot + ')" title="' +
+          escapeAttr(r.name + ' — ' + r.project + ': ' + fmtShort(dateForIndex(r.start)) + ' – ' + fmtShort(dateForIndex(r.start + r.duration - 1)) + ' (' + r.duration + 'd, ' + r.allocation + '%)') + '">' +
+          '<span class="handle left" data-id="' + r.id + '" data-mode="resize-left"></span>' +
+          (width >= 36 ? '<span class="badge">' + r.allocation + '%</span>' : '') +
+          '<span class="handle right" data-id="' + r.id + '" data-mode="resize-right"></span>' +
+          '</div>' +
+          '<span class="dur-label" style="left:' + tipRight + 'px">' + r.duration + 'd · ' + fmtShort(dateForIndex(r.start)) + '–' + fmtShort(dateForIndex(r.start + r.duration - 1)) + '</span>' +
+          '</div>';
+      });
+    });
+
+    grid.innerHTML = html;
+
+    var projectListEl = document.getElementById('projectList');
+    if (projectListEl) {
+      projectListEl.innerHTML = groups.map(function (g) {
+        return '<option value="' + escapeAttr(g.name) + '"></option>';
+      }).join('');
+    }
+
+    if (!resources.length) {
+      var note = document.createElement('div');
+      note.className = 'empty-state';
+      note.style.gridColumn = '1 / -1';
+      note.textContent = 'No resources yet — add one above to start building the timeline.';
+      grid.appendChild(note);
+    }
+
+    renderPanel();
+  }
+
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // ---- Add resource ----
+  addForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = nameInput.value.trim();
+    var project = projectInput.value.trim() || 'Untitled Project';
+    var allocation = Number(allocInput.value);
+    if (!name) return;
+    if (!isFinite(allocation) || allocation < 0) allocation = 0;
+    var sameProject = resources.filter(function (r) { return r.project === project; });
+    var start = sameProject.length
+      ? Math.max.apply(null, sameProject.map(function (r) { return r.start + r.duration; }))
+      : todayIndex();
+    start = clamp(start, 0, TOTAL_DAYS - 5);
+    addResourceInternal(name, allocation, start, 5, project);
+    nameInput.value = '';
+    allocInput.value = '100';
+    nameInput.focus();
+    render();
+    scheduleSave();
+  });
+
+  // ---- Delegated events on the grid ----
+  grid.addEventListener('click', function (e) {
+    var del = e.target.closest('.del-btn');
+    if (del) {
+      var id = Number(del.dataset.id);
+      resources = resources.filter(function (r) { return r.id !== id; });
+      render();
+      scheduleSave();
+      return;
+    }
+    var dayCell = e.target.closest('.day-cell');
+    if (dayCell) {
+      var idx = Number(dayCell.dataset.dayIndex);
+      selectedDayIndex = (selectedDayIndex === idx) ? null : idx;
+      render();
+    }
+  });
+
+  panelClose.addEventListener('click', function () {
+    selectedDayIndex = null;
+    render();
+  });
+
+  function barTitle(r) {
+    return r.name + ' — ' + r.project + ': ' + fmtShort(dateForIndex(r.start)) + ' – ' + fmtShort(dateForIndex(r.start + r.duration - 1)) + ' (' + r.duration + 'd, ' + r.allocation + '%)';
+  }
+
+  grid.addEventListener('input', function (e) {
+    var el = e.target;
+    if (el.dataset && el.dataset.role === 'name') {
+      var r = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r) {
+        r.name = el.value;
+        var bar = grid.querySelector('.bar[data-id="' + r.id + '"]');
+        if (bar) bar.title = barTitle(r);
+      }
+    } else if (el.dataset && el.dataset.role === 'alloc') {
+      var r2 = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r2) {
+        var v = Number(el.value);
+        r2.allocation = isFinite(v) && v >= 0 ? v : 0;
+        var badge = grid.querySelector('.bar[data-id="' + r2.id + '"] .badge');
+        if (badge) badge.textContent = r2.allocation + '%';
+        var bar2 = grid.querySelector('.bar[data-id="' + r2.id + '"]');
+        if (bar2) bar2.title = barTitle(r2);
+      }
+    } else if (el.dataset && el.dataset.role === 'project') {
+      var r3 = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r3) {
+        r3.project = el.value;
+        var bar3 = grid.querySelector('.bar[data-id="' + r3.id + '"]');
+        if (bar3) bar3.title = barTitle(r3);
+      }
+    }
+    renderPanel();
+    scheduleSave();
+  });
+
+  grid.addEventListener('change', function (e) {
+    var el = e.target;
+    if (el.dataset && el.dataset.role === 'project') {
+      var r = resources.find(function (r) { return r.id === Number(el.dataset.id); });
+      if (r) {
+        r.project = el.value.trim() || 'Untitled Project';
+      }
+      render();
+      scheduleSave();
+    } else if (el.dataset && el.dataset.role === 'group-project') {
+      var oldName = el.dataset.project;
+      var newName = el.value.trim() || 'Untitled Project';
+      if (newName !== oldName) {
+        resources.forEach(function (r) {
+          if (r.project === oldName) r.project = newName;
+        });
+      }
+      render();
+      scheduleSave();
+    }
+  });
+
+  grid.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+      e.preventDefault();
+      e.target.blur();
+    }
+  });
+
+  // ---- Drag / resize ----
+  grid.addEventListener('pointerdown', function (e) {
+    var handle = e.target.closest('.handle');
+    var barEl = e.target.closest('.bar');
+    if (!barEl) return;
+    var id = Number(barEl.dataset.id);
+    var resource = resources.find(function (r) { return r.id === id; });
+    if (!resource) return;
+
+    var mode = handle ? handle.dataset.mode : 'move';
+    var startX = e.clientX;
+    var origStart = resource.start;
+    var origDuration = resource.duration;
+    var trackEl = grid.querySelector('.track-cell[data-track-for="' + id + '"]');
+    var durLabel = trackEl ? trackEl.querySelector('.dur-label') : null;
+    var badge = barEl.querySelector('.badge');
+    var dragGroups = projectGroups();
+    var groupIndex = dragGroups.findIndex(function (g) { return g.resources.indexOf(resource) !== -1; });
+
+    e.preventDefault();
+    try { barEl.setPointerCapture(e.pointerId); } catch (err) {}
+    dragTip.style.display = 'block';
+
+    function applyVisual() {
+      var left = resource.start * DAY_WIDTH;
+      var width = resource.duration * DAY_WIDTH;
+      barEl.style.left = left + 'px';
+      barEl.style.width = width + 'px';
+      if (durLabel) {
+        durLabel.style.left = (left + width + 8) + 'px';
+        durLabel.textContent = resource.duration + 'd · ' + fmtShort(dateForIndex(resource.start)) + '–' + fmtShort(dateForIndex(resource.start + resource.duration - 1));
+      }
+      if (width < 36 && badge) badge.style.display = 'none';
+      else if (badge) badge.style.display = '';
+
+      updateProjectBarVisual();
+      renderPanel();
+
+      dragTip.textContent = fmtShort(dateForIndex(resource.start)) + ' – ' + fmtShort(dateForIndex(resource.start + resource.duration - 1)) + ' (' + resource.duration + 'd)';
+      dragTip.style.left = e.clientX + 'px';
+      dragTip.style.top = e.clientY + 'px';
+    }
+
+    function updateProjectBarVisual() {
+      var group = dragGroups[groupIndex];
+      if (!group) return;
+      var range = projectRangeFor(group.resources);
+      var tracks = grid.querySelectorAll('.project-track');
+      var groupTrackEl = tracks[groupIndex];
+      if (!groupTrackEl) return;
+      var pBar = groupTrackEl.querySelector('.project-bar');
+      var pCaption = groupTrackEl.querySelector('.project-caption');
+      if (range && pBar) {
+        var pLeft = range.start * DAY_WIDTH;
+        var pWidth = (range.end - range.start) * DAY_WIDTH;
+        pBar.style.left = pLeft + 'px';
+        pBar.style.width = pWidth + 'px';
+        if (pCaption) {
+          pCaption.style.left = pLeft + 'px';
+          pCaption.textContent = fmtShort(dateForIndex(range.start)) + ' – ' + fmtShort(dateForIndex(range.end - 1)) + ' (' + (range.end - range.start) + 'd)';
+        }
+      }
+    }
+
+    function onMove(ev) {
+      var dx = ev.clientX - startX;
+      var dDays = Math.round(dx / DAY_WIDTH);
+      if (mode === 'move') {
+        resource.start = clamp(origStart + dDays, 0, TOTAL_DAYS - resource.duration);
+      } else if (mode === 'resize-left') {
+        var newStart = clamp(origStart + dDays, 0, origStart + origDuration - 1);
+        resource.duration = origDuration + (origStart - newStart);
+        resource.start = newStart;
+      } else if (mode === 'resize-right') {
+        var newDuration = clamp(origDuration + dDays, 1, TOTAL_DAYS - origStart);
+        resource.duration = newDuration;
+      }
+      e = ev;
+      applyVisual();
+    }
+
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      dragTip.style.display = 'none';
+      render();
+      scheduleSave();
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
+  // ---- Export / Import / Reset ----
+  exportBtn.addEventListener('click', function () {
+    var data = {
+      version: 1, resources: resources, nextId: nextId, colorSeq: colorSeq,
+      exportedAt: new Date().toISOString()
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gantt-project.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    flashStatus('Exported gantt-project.json');
+  });
+
+  importBtn.addEventListener('click', function () { importFile.click(); });
+
+  importFile.addEventListener('change', function () {
+    var file = importFile.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        if (!applyState(data)) throw new Error('unrecognized file shape');
+        render();
+        scheduleSave();
+        flashStatus('Imported ' + file.name);
+      } catch (err) {
+        flashStatus('Could not read that file — expected a Gantt export');
+      }
+    };
+    reader.readAsText(file);
+    importFile.value = '';
+  });
+
+  resetBtn.addEventListener('click', function () {
+    if (!confirm('Reset to the demo data? This clears your saved project in this browser.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (err) {}
+    resources = [];
+    nextId = 1;
+    colorSeq = 0;
+    seedDemo();
+    render();
+    flashStatus('Reset to demo data');
+  });
+
+  if (!loadFromStorage()) seedDemo();
+  render();
+})();
+</script>
