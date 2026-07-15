@@ -430,7 +430,6 @@
 
   var resources = [];
   var nextId = 1;
-  var colorSeq = 0;
   var selectedWeeks = []; // array of selected week indices, shown together in the side panel
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
   var collapsedProjects = {}; // project name -> true when its resource rows are hidden
@@ -475,8 +474,8 @@
     var wd = new Date().getDay();
     return ((wd === 0) ? 6 : (wd - 1)) / 7;
   }
-  function fmtShort(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
-  function fmtLong(d) { return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+  function fmtShort(d) { return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }); }
+  function fmtLong(d) { return d.toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' }); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   function rangeLabelShort(startW, endWExclusive) {
@@ -517,10 +516,8 @@
       project: project || 'Untitled Project',
       allocation: allocation,
       start: clamp(start, 0, TOTAL_WEEKS - 1),
-      duration: Math.max(1, duration),
-      colorSlot: (colorSeq % 8) + 1
+      duration: Math.max(1, duration)
     });
-    colorSeq++;
   }
 
   function projectRangeFor(list) {
@@ -582,7 +579,7 @@
   }
 
   function currentStateData() {
-    return { version: 2, unit: 'week', resources: resources, nextId: nextId, colorSeq: colorSeq };
+    return { version: 2, unit: 'week', resources: resources, nextId: nextId };
   }
 
   function persistState() {
@@ -696,12 +693,10 @@
         project: String(r.project || 'Untitled Project'),
         allocation: isFinite(Number(r.allocation)) ? Number(r.allocation) : 0,
         start: clamp(start, 0, TOTAL_WEEKS - 1),
-        duration: duration,
-        colorSlot: (r.colorSlot >= 1 && r.colorSlot <= 8) ? r.colorSlot : 1
+        duration: duration
       };
     });
     nextId = Number(data.nextId) || (resources.reduce(function (m, r) { return Math.max(m, r.id); }, 0) + 1);
-    colorSeq = Number(data.colorSeq) || resources.length;
     return true;
   }
 
@@ -712,7 +707,7 @@
       var d = dateForWeek(w);
       var key = d.getFullYear() + '-' + d.getMonth();
       if (!cur || cur.key !== key) {
-        cur = { key: key, label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), count: 0 };
+        cur = { key: key, label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }), count: 0 };
         segs.push(cur);
       }
       cur.count++;
@@ -918,7 +913,7 @@
         var left = r.start * WEEK_WIDTH;
         var width = r.duration * WEEK_WIDTH;
         html += '<div class="cell track-cell' + rowClass + '" data-track-for="' + r.id + '" data-project="' + escapeAttr(r.project) + '" style="grid-column: span ' + TOTAL_WEEKS + '">' +
-          '<div class="bar" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + r.colorSlot + ')" title="' +
+          '<div class="bar" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + colorSlot + ')" title="' +
           escapeAttr(barTitle(r)) + '">' +
           '<span class="handle left" data-id="' + r.id + '" data-mode="resize-left"></span>' +
           '<span class="badge">' + r.allocation + '%</span>' +
@@ -1287,7 +1282,7 @@
   // ---- Export ----
   exportBtn.addEventListener('click', function () {
     var data = {
-      version: 2, unit: 'week', resources: resources, nextId: nextId, colorSeq: colorSeq,
+      version: 2, unit: 'week', resources: resources, nextId: nextId,
       exportedAt: new Date().toISOString()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
