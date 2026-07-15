@@ -62,9 +62,11 @@
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 18px;
+    padding: 10px 16px;
+    flex: 1 1 420px;
+    min-width: 0;
   }
+  .add-form.is-locked { pointer-events: none; opacity: 0.35; filter: saturate(0.3); }
   .field { display: flex; flex-direction: column; gap: 4px; }
   .field label { font-size: 11px; color: var(--text-secondary); }
   .field input {
@@ -90,9 +92,9 @@
     cursor: pointer;
   }
   .add-form button:hover { filter: brightness(1.08); }
-  .add-form .hint { font-size: 11px; color: var(--text-muted); margin-left: auto; align-self: center; }
 
-  .toolbar { display: flex; align-items: center; gap: 8px; margin: -6px 0 14px; }
+  .toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin: 0 0 14px; }
+  .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; margin-left: auto; }
   .ghost-btn {
     font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px;
     border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary);
@@ -152,7 +154,6 @@
   .panel-row-alloc { font-size: 13px; font-weight: 700; flex: none; }
 
   .editable-area { position: relative; }
-  .editable-area.locked .add-form,
   .editable-area.locked .gantt-card { pointer-events: none; opacity: 0.35; filter: saturate(0.3); }
   .lock-overlay {
     position: absolute; inset: 0; z-index: 10;
@@ -323,15 +324,6 @@
       </div>
 
       <div class="toolbar">
-        <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
-        <button type="button" class="ghost-btn" id="saveAsBtn">Save As…</button>
-        <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
-        <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
-        <button type="button" class="ghost-btn" id="viewToggleBtn">View: Projects</button>
-        <span class="save-status" id="saveStatus">—</span>
-      </div>
-
-      <div class="editable-area" id="editableArea">
         <form class="add-form" id="addForm">
           <div class="field">
             <label for="projectInput">Project</label>
@@ -346,10 +338,20 @@
             <label for="allocInput">Allocation</label>
             <input id="allocInput" type="number" min="0" step="1" value="100" required />
           </div>
-          <button type="submit">Add resource</button>
-          <span class="hint">Bars default to a one-week span starting after this resource's last entry in the same project</span>
+          <button type="submit" title="Bars default to a one-week span starting after this resource's last entry in the same project">Add resource</button>
         </form>
 
+        <div class="toolbar-actions">
+          <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
+          <button type="button" class="ghost-btn" id="saveAsBtn">Save As…</button>
+          <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
+          <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
+          <button type="button" class="ghost-btn" id="viewToggleBtn">View: Projects</button>
+          <span class="save-status" id="saveStatus">—</span>
+        </div>
+      </div>
+
+      <div class="editable-area" id="editableArea">
         <div class="resource-filter" id="resourceFilterBar" style="display:none">
           <div class="resource-filter-label">Filter resources</div>
           <div class="resource-filter-chips" id="resourceFilterChips"></div>
@@ -698,6 +700,7 @@
   function updateLockState() {
     var locked = fsApiSupported && !fileHandle;
     editableArea.classList.toggle('locked', locked);
+    addForm.classList.toggle('is-locked', locked);
     lockOverlay.style.display = locked ? '' : 'none';
   }
 
