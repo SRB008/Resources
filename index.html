@@ -14,8 +14,24 @@
     --series-1: #2a78d6; --series-2: #008300; --series-3: #e87ba4; --series-4: #eda100;
     --series-5: #1baf7a; --series-6: #eb6834; --series-7: #4a3aa7; --series-8: #e34948;
     --today-marker: var(--series-1);
+    --row-h: 46px;
+    --track-h: 54px;
+    --group-track-h: 40px;
+    --bar-h: 26px;
+    --bar-top: 10px;
+    --group-bar-h: 20px;
+    --group-bar-top: 9px;
   }
   .app[data-view-mode="resource"] { --today-marker: var(--series-8); }
+  .app[data-density="narrow"] {
+    --row-h: 32px;
+    --track-h: 34px;
+    --group-track-h: 26px;
+    --bar-h: 18px;
+    --bar-top: 8px;
+    --group-bar-h: 12px;
+    --group-bar-top: 7px;
+  }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .app {
       color-scheme: dark;
@@ -247,7 +263,7 @@
     border-bottom: 1px solid var(--gridline);
     display: flex; align-items: center; gap: 6px;
     padding: 0 10px;
-    min-height: 46px;
+    min-height: var(--row-h);
   }
   .label-cell.header-cell { min-height: 30px; }
   .label-cell.month-label { min-height: 24px; }
@@ -287,7 +303,7 @@
   .track-cell {
     position: relative;
     border-bottom: 1px solid var(--gridline);
-    min-height: 54px;
+    min-height: var(--track-h);
   }
   .row-even .track-cell, .row-even .label-cell.resource-label { background: color-mix(in srgb, var(--page-plane) 55%, var(--surface-1)); }
 
@@ -310,13 +326,13 @@
     flex: none; font-size: 11px; font-weight: 600; color: var(--text-muted);
     background: var(--page-plane); border-radius: 999px; padding: 1px 7px;
   }
-  .project-track { min-height: 40px; }
+  .project-track { min-height: var(--group-track-h); }
   .group-divider { border-top: 2px solid var(--border); }
   .drop-target { background: color-mix(in srgb, var(--series-1) 16%, var(--surface-1)) !important; }
   .reorder-target-before { box-shadow: inset 0 2px 0 0 var(--series-1); }
   .reorder-target-after { box-shadow: inset 0 -2px 0 0 var(--series-1); }
   .project-bar {
-    position: absolute; top: 9px; height: 20px; border-radius: 6px;
+    position: absolute; top: var(--group-bar-top); height: var(--group-bar-h); border-radius: 6px;
     border: 1px solid var(--baseline);
     background-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
     background-image: repeating-linear-gradient(45deg, var(--baseline) 0 2px, transparent 2px 9px);
@@ -326,7 +342,7 @@
   }
 
   .bar {
-    position: absolute; top: 10px; height: 26px; border-radius: 6px;
+    position: absolute; top: var(--bar-top); height: var(--bar-h); border-radius: 6px;
     display: flex; align-items: center; padding: 0 8px;
     box-shadow: 0 0 0 2px var(--surface-1);
     cursor: grab; user-select: none;
@@ -412,6 +428,7 @@
             <button type="button" class="view-toggle-btn" data-view="project">Projects</button>
             <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
           </div>
+          <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
           <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
@@ -536,6 +553,7 @@
   var viewToggle = document.getElementById('viewToggle');
   var viewToggleBtns = viewToggle.querySelectorAll('.view-toggle-btn');
   var timelineStartInput = document.getElementById('timelineStartInput');
+  var densityToggleBtn = document.getElementById('densityToggleBtn');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -568,6 +586,10 @@
   var viewMode = 'project'; // 'project' groups the chart by project, 'resource' groups it by resource
   try {
     if (localStorage.getItem('gantt-view-mode') === 'resource') viewMode = 'resource';
+  } catch (err) {}
+  var density = 'normal'; // 'normal' or 'narrow' row height
+  try {
+    if (localStorage.getItem('gantt-density') === 'narrow') density = 'narrow';
   } catch (err) {}
 
   var fsApiSupported = !!(window.showOpenFilePicker && window.showSaveFilePicker);
@@ -1008,6 +1030,8 @@
       btn.classList.toggle('active', btn.dataset.view === viewMode);
     });
     appEl.dataset.viewMode = viewMode;
+    appEl.dataset.density = density;
+    densityToggleBtn.textContent = 'Density:' + (density === 'narrow' ? 'Narrow' : 'Normal');
     timelineStartInput.value = isoDateString(timelineStartDate);
     renderResourceFilterChips();
     renderProjectFilterChips();
@@ -1567,6 +1591,12 @@
     render();
   });
 
+  densityToggleBtn.addEventListener('click', function () {
+    density = density === 'narrow' ? 'normal' : 'narrow';
+    try { localStorage.setItem('gantt-density', density); } catch (err) {}
+    render();
+  });
+
   // Changing the start date pans the visible window: resource weeks shift so their
   // actual calendar dates stay put, rather than jumping to a different week.
   timelineStartInput.addEventListener('change', function () {
@@ -1692,7 +1722,9 @@
     var rows = visibleExportRows();
     if (!rows.length) return null;
 
-    var MONTH_H = 24, WEEK_H = 30, GROUP_H = 46, ENTRY_H = 54;
+    var isNarrow = density === 'narrow';
+    var MONTH_H = 24, WEEK_H = 30;
+    var GROUP_H = isNarrow ? 32 : 46, ENTRY_H = isNarrow ? 34 : 54;
     var headerH = MONTH_H + WEEK_H;
     var bodyH = rows.reduce(function (sum, row) { return sum + (row.type === 'group' ? GROUP_H : ENTRY_H); }, 0);
     var width = LABEL_WIDTH + TOTAL_WEEKS * WEEK_WIDTH;
