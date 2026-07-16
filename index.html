@@ -800,10 +800,14 @@
     resources.splice(insertAfter ? toIdx + 1 : toIdx, 0, moved);
   }
 
-  // Sorts the rows within each group (project or resource, whichever the current view groups
-  // by) by start date, then alphabetically to break ties. Group order itself is left untouched.
+  // Sorts groups (projects in project view, resources in resource view) alphabetically by name,
+  // then sorts the rows within each group (resources in project view, projects in resource view)
+  // by start date, breaking ties alphabetically.
   function sortGroupsAlphabetically() {
     var groups = displayGroups();
+    groups.sort(function (a, b) {
+      return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    });
     groups.forEach(function (g) {
       g.resources.sort(function (a, b) {
         if (a.start !== b.start) return a.start - b.start;
