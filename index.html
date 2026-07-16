@@ -441,7 +441,7 @@
             <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
           </div>
           <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
-          <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort projects or resources alphabetically, depending on the current view">Sort A-Z</button>
+          <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort project or resource rows alphabethical, then by date">Sort View</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
           <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
@@ -800,11 +800,18 @@
     resources.splice(insertAfter ? toIdx + 1 : toIdx, 0, moved);
   }
 
-  // Reorders groups (projects or resources, whichever the current view groups by) alphabetically,
-  // keeping each group's own internal row order untouched.
+  // Sorts the rows within each group (project or resource, whichever the current view groups
+  // by) by start date, then alphabetically to break ties. Group order itself is left untouched.
   function sortGroupsAlphabetically() {
     var groups = displayGroups();
-    groups.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
+    groups.forEach(function (g) {
+      g.resources.sort(function (a, b) {
+        if (a.start !== b.start) return a.start - b.start;
+        var an = (viewMode === 'resource' ? a.project : a.name) || '';
+        var bn = (viewMode === 'resource' ? b.project : b.name) || '';
+        return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+      });
+    });
     var sorted = [];
     groups.forEach(function (g) { sorted = sorted.concat(g.resources); });
     resources = sorted;
