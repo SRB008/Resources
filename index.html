@@ -1,4 +1,5 @@
-<title>Project Gantt Planner</title>
+<title>Resource Planner</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
   .app {
     color-scheme: light;
@@ -12,7 +13,9 @@
     --border:         rgba(11,11,11,0.10);
     --series-1: #2a78d6; --series-2: #008300; --series-3: #e87ba4; --series-4: #eda100;
     --series-5: #1baf7a; --series-6: #eb6834; --series-7: #4a3aa7; --series-8: #e34948;
+    --today-marker: var(--series-1);
   }
+  .app[data-view-mode="resource"] { --today-marker: var(--series-8); }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .app {
       color-scheme: dark;
@@ -54,19 +57,6 @@
   .header h1 { font-size: 20px; margin: 0 0 4px; }
   .header p { margin: 0 0 18px; color: var(--text-secondary); font-size: 13px; }
 
-  .add-form {
-    display: flex;
-    align-items: end;
-    gap: 12px;
-    flex-wrap: wrap;
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 16px;
-    flex: 1 1 420px;
-    min-width: 0;
-  }
-  .add-form.is-locked { pointer-events: none; opacity: 0.35; filter: saturate(0.3); }
   .field { display: flex; flex-direction: column; gap: 4px; }
   .field label { font-size: 11px; color: var(--text-secondary); }
   .field input {
@@ -77,10 +67,31 @@
     border-radius: 6px;
     background: var(--page-plane);
     color: var(--text-primary);
-    width: 160px;
+    width: 100%;
   }
   .field.alloc input { width: 90px; }
-  .add-form button {
+
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .modal {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; width: 320px; max-width: 100%;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.24);
+  }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .modal-title { font-size: 14px; font-weight: 700; }
+  .add-form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+  .add-form button[type="submit"] {
     font: inherit;
     font-size: 13px;
     font-weight: 600;
@@ -91,10 +102,24 @@
     color: #fff;
     cursor: pointer;
   }
-  .add-form button:hover { filter: brightness(1.08); }
+  .add-form button[type="submit"]:hover { filter: brightness(1.08); }
+
+  .add-entry-btn {
+    flex: none; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--baseline); border-radius: 5px;
+    background: var(--surface-1); color: var(--text-secondary);
+    font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; padding: 0;
+  }
+  .add-entry-btn:hover { background: var(--page-plane); color: var(--series-1); border-color: var(--series-1); }
 
   .toolbar { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin: 0 0 14px; }
   .toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; margin-left: auto; }
+  .start-date-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .start-date-field input[type="date"] {
+    font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 6px;
+    border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary);
+  }
   .ghost-btn {
     font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 6px;
     border: 1px solid var(--baseline); background: var(--surface-1); color: var(--text-primary);
@@ -104,6 +129,19 @@
   .ghost-btn.danger:hover { color: var(--series-8); border-color: var(--series-8); }
   .ghost-btn.warn { color: var(--series-4); border-color: var(--series-4); }
   .ghost-btn.warn:hover { background: color-mix(in srgb, var(--series-4) 12%, var(--surface-1)); }
+
+  .view-toggle {
+    display: inline-flex; border: 1px solid var(--baseline); border-radius: 6px; overflow: hidden;
+  }
+  .view-toggle-btn {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 6px 14px;
+    border: none; background: var(--surface-1); color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--baseline); }
+  .view-toggle-btn:hover { background: var(--page-plane); }
+  .view-toggle-btn.active { background: var(--series-1); color: #fff; }
+  .view-toggle-btn.active:hover { filter: brightness(1.05); }
   .save-status { margin-left: auto; font-size: 11px; color: var(--text-muted); transition: color .2s; }
   .save-status.flash { color: var(--series-2); font-weight: 600; }
 
@@ -168,11 +206,20 @@
   .lock-overlay-inner p { margin: 0 0 14px; font-size: 13px; color: var(--text-secondary); }
   .lock-overlay-actions { display: flex; gap: 10px; justify-content: center; }
 
-  .resource-filter { margin-bottom: 12px; }
+  .filters-block { margin-bottom: 12px; }
+  .resource-filter { margin-bottom: 6px; }
+  .resource-filter:last-child { margin-bottom: 0; }
   .resource-filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
   .resource-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
+  #resourceFilterChips .filter-chip:hover { background: color-mix(in srgb, var(--series-8) 10%, var(--page-plane)); }
+  #resourceFilterChips .filter-chip.active {
+    background: color-mix(in srgb, var(--series-8) 18%, var(--surface-1));
+    border-color: var(--series-8); color: var(--series-8);
+  }
+
   .gantt-card {
+    position: relative;
     background: var(--surface-1);
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -180,6 +227,17 @@
   }
   .gantt-scroll { overflow-x: auto; }
   .gantt-grid { display: grid; }
+
+  .col-resize-handle {
+    position: absolute; top: 0; bottom: 0; width: 7px; margin-left: -4px;
+    cursor: col-resize; z-index: 6; background: transparent;
+  }
+  .col-resize-handle::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px;
+    background: transparent;
+  }
+  .col-resize-handle:hover::after, .col-resize-handle.dragging::after { background: var(--series-1); }
+  .col-resize-handle:hover, .col-resize-handle.dragging { background: color-mix(in srgb, var(--series-1) 12%, transparent); }
 
   .cell { }
   .label-cell {
@@ -193,6 +251,11 @@
   }
   .label-cell.header-cell { min-height: 30px; }
   .label-cell.month-label { min-height: 24px; }
+  .label-cell.timeline-label {
+    background: color-mix(in srgb, var(--today-marker) 18%, var(--surface-1));
+    color: var(--today-marker);
+    font-weight: 700;
+  }
 
   .month-cell {
     font-size: 11px; color: var(--text-secondary); font-weight: 600;
@@ -214,7 +277,7 @@
   }
   .week-cell:hover { background: color-mix(in srgb, var(--series-1) 10%, var(--surface-1)); }
   .week-cell.today {
-    background: color-mix(in srgb, var(--series-1) 14%, var(--surface-1)); color: var(--series-1);
+    background: color-mix(in srgb, var(--today-marker) 14%, var(--surface-1)); color: var(--today-marker);
   }
   .week-cell.selected {
     background: color-mix(in srgb, var(--series-1) 20%, var(--surface-1));
@@ -231,7 +294,7 @@
   .project-label-input {
     font: inherit; font-weight: 600; font-size: 13px;
     border: 1px solid transparent; background: transparent;
-    border-radius: 4px; padding: 4px 6px; width: 100%; min-width: 0;
+    border-radius: 4px; padding: 4px 6px; flex: 1; min-width: 0;
   }
   .project-label-input:hover, .project-label-input:focus { border-color: var(--baseline); background: var(--page-plane); }
   .collapse-toggle {
@@ -284,7 +347,7 @@
   .resource-label-top { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
   .name-input {
     font: inherit; font-size: 13px; border: 1px solid transparent; background: transparent;
-    color: var(--text-primary); border-radius: 4px; padding: 4px 6px; width: 84px;
+    color: var(--text-primary); border-radius: 4px; padding: 4px 6px; flex: 1;
     min-width: 0;
   }
   .name-input:hover, .name-input:focus { border-color: var(--baseline); background: var(--page-plane); }
@@ -297,7 +360,7 @@
   }
   .alloc-unit { font-size: 11px; color: var(--text-muted); }
   .del-btn {
-    margin-left: auto; flex: none; border: none; background: transparent; color: var(--text-muted);
+    flex: none; border: none; background: transparent; color: var(--text-muted);
     font-size: 14px; cursor: pointer; border-radius: 4px; padding: 2px 6px; line-height: 1;
   }
   .del-btn:hover { color: var(--series-8); background: var(--page-plane); }
@@ -313,59 +376,69 @@
     transform: translate(-50%, -130%);
     white-space: nowrap; display: none;
   }
+
+  @media print {
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    .header, .toolbar, .filters-block, .side-panel, .lock-overlay,
+    .drag-tip, .modal-overlay, .col-resize-handle,
+    .add-entry-btn, .del-btn, .collapse-toggle { display: none !important; }
+    .app { padding: 0; }
+    .layout { display: block; }
+    .gantt-card { border: none; box-shadow: none; }
+    .gantt-scroll { overflow: visible; }
+    .label-cell { position: static; }
+    @page { size: landscape; margin: 10mm; }
+  }
 </style>
 
 <div class="app" id="app">
   <div class="layout">
     <div class="main-col">
       <div class="header">
-        <h1>Project Gantt Planner</h1>
-        <p>Data lives entirely in a linked .json file, never in this page. Open an existing file or create a new one below, then add resources and tag each with a project. Drag a resource bar to move it, drag its edges to change duration, or click one or more weeks in the timeline to see who's allocated during them — each project gets its own timeline bar that automatically fits around its resources.</p>
+        <h1>Resource Planner</h1>
       </div>
 
       <div class="toolbar">
-        <form class="add-form" id="addForm">
-          <div class="field">
-            <label for="projectInput">Project</label>
-            <input id="projectInput" type="text" list="projectList" placeholder="e.g. Website Redesign" required maxlength="60" />
-            <datalist id="projectList"></datalist>
-          </div>
-          <div class="field">
-            <label for="nameInput">Resource name</label>
-            <input id="nameInput" type="text" placeholder="e.g. Alice" required maxlength="40" />
-          </div>
-          <div class="field alloc">
-            <label for="allocInput">Allocation</label>
-            <input id="allocInput" type="number" min="0" step="1" value="100" required />
-          </div>
-          <button type="submit" title="Bars default to a one-week span starting after this resource's last entry in the same project">Add resource</button>
-        </form>
-
         <div class="toolbar-actions">
+          <div class="start-date-field" title="Timeline start (snaps to the Monday of the chosen week)">
+            <label for="timelineStartInput">Start</label>
+            <input type="date" id="timelineStartInput" />
+          </div>
+          <div class="view-toggle" id="viewToggle" role="group" aria-label="Group chart by">
+            <button type="button" class="view-toggle-btn" data-view="project">Projects</button>
+            <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
+          </div>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
-          <button type="button" class="ghost-btn" id="saveAsBtn">Save As…</button>
+          <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
           <button type="button" class="ghost-btn" id="exportBtn">Export JSON</button>
-          <button type="button" class="ghost-btn" id="viewToggleBtn">View: Projects</button>
+          <button type="button" class="ghost-btn" id="exportPngBtn">Export PNG</button>
+          <button type="button" class="ghost-btn" id="exportPdfBtn">Export PDF</button>
           <span class="save-status" id="saveStatus">—</span>
         </div>
       </div>
 
       <div class="editable-area" id="editableArea">
-        <div class="resource-filter" id="resourceFilterBar" style="display:none">
-          <div class="resource-filter-label">Filter resources</div>
-          <div class="resource-filter-chips" id="resourceFilterChips"></div>
-        </div>
+        <div class="filters-block" id="filtersBlock" style="display:none">
+          <div class="resource-filter-label">Filter</div>
+          <div class="resource-filter" id="resourceFilterBar" style="display:none">
+            <div class="resource-filter-chips" id="resourceFilterChips"></div>
+          </div>
 
-        <div class="resource-filter" id="projectFilterBar" style="display:none">
-          <div class="resource-filter-label">Filter projects</div>
-          <div class="resource-filter-chips" id="projectFilterChips"></div>
+          <div class="resource-filter" id="projectFilterBar" style="display:none">
+            <div class="resource-filter-chips" id="projectFilterChips"></div>
+          </div>
         </div>
 
         <div class="gantt-card">
           <div class="gantt-scroll">
             <div class="gantt-grid" id="ganttGrid"></div>
           </div>
+          <div class="col-resize-handle" id="colResizeHandle" title="Drag to resize column"></div>
         </div>
 
         <div class="lock-overlay" id="lockOverlay" style="display:none">
@@ -396,29 +469,73 @@
       <div class="panel-list" id="panelList"></div>
     </aside>
   </div>
-</div>
 
-<div class="drag-tip" id="dragTip"></div>
+  <div class="drag-tip" id="dragTip"></div>
+
+  <div class="modal-overlay" id="addModalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">Add resource</div>
+        <button type="button" class="panel-close" id="addModalClose" title="Close">✕</button>
+      </div>
+      <form class="add-form" id="addForm">
+        <div class="field">
+          <label for="projectInput">Project</label>
+          <input id="projectInput" type="text" list="projectList" placeholder="e.g. Website Redesign" required maxlength="60" />
+          <datalist id="projectList"></datalist>
+        </div>
+        <div class="field">
+          <label for="nameInput">Resource name</label>
+          <input id="nameInput" type="text" placeholder="e.g. Alice" required maxlength="40" />
+        </div>
+        <div class="field alloc">
+          <label for="allocInput">Allocation</label>
+          <input id="allocInput" type="number" min="0" step="1" value="100" required />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="addModalCancel">Cancel</button>
+          <button type="submit" title="Bars default to a one-week span starting after this resource's last entry in the same project">Add resource</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 <script>
 (function () {
   var TOTAL_WEEKS = 26;
   var WEEK_WIDTH = 100;
+  var MIN_LABEL_WIDTH = 160;
+  var MAX_LABEL_WIDTH = 480;
   var LABEL_WIDTH = 220;
-  var WEEK_OFFSET = -2; // baseDate = Monday of (this week + WEEK_OFFSET weeks)
+  try {
+    var storedLabelWidth = Number(localStorage.getItem('gantt-label-width'));
+    if (isFinite(storedLabelWidth) && storedLabelWidth >= MIN_LABEL_WIDTH && storedLabelWidth <= MAX_LABEL_WIDTH) {
+      LABEL_WIDTH = storedLabelWidth;
+    }
+  } catch (err) {}
   var DEFAULT_DURATION = 1; // weeks
 
+  var appEl = document.getElementById('app');
   var grid = document.getElementById('ganttGrid');
+  var colResizeHandle = document.getElementById('colResizeHandle');
   var dragTip = document.getElementById('dragTip');
   var addForm = document.getElementById('addForm');
   var projectInput = document.getElementById('projectInput');
   var nameInput = document.getElementById('nameInput');
   var allocInput = document.getElementById('allocInput');
+  var addModalOverlay = document.getElementById('addModalOverlay');
+  var addModalClose = document.getElementById('addModalClose');
+  var addModalCancel = document.getElementById('addModalCancel');
   var openFileBtn = document.getElementById('openFileBtn');
   var saveAsBtn = document.getElementById('saveAsBtn');
   var reconnectBtn = document.getElementById('reconnectBtn');
   var exportBtn = document.getElementById('exportBtn');
-  var viewToggleBtn = document.getElementById('viewToggleBtn');
+  var exportPngBtn = document.getElementById('exportPngBtn');
+  var exportPdfBtn = document.getElementById('exportPdfBtn');
+  var viewToggle = document.getElementById('viewToggle');
+  var viewToggleBtns = viewToggle.querySelectorAll('.view-toggle-btn');
+  var timelineStartInput = document.getElementById('timelineStartInput');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -426,6 +543,7 @@
   var panelList = document.getElementById('panelList');
   var panelClose = document.getElementById('panelClose');
   var panelFilterChips = document.getElementById('panelFilterChips');
+  var filtersBlock = document.getElementById('filtersBlock');
   var resourceFilterBar = document.getElementById('resourceFilterBar');
   var resourceFilterChips = document.getElementById('resourceFilterChips');
   var projectFilterBar = document.getElementById('projectFilterBar');
@@ -441,6 +559,7 @@
 
   var resources = [];
   var nextId = 1;
+  var timelineStartDate = mondayOnOrBefore(new Date()); // fixed calendar anchor for week 0; persisted with the file
   var selectedWeeks = []; // array of selected week indices, shown together in the side panel
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
   var collapsedGroups = { project: {}, resource: {} }; // per-view: group name -> true when its rows are hidden
@@ -459,14 +578,33 @@
 
   // Grid is week-granular: every column is a Monday-Sunday week, and resource
   // start/duration are stored directly in whole weeks (no day-level snapping needed).
-  function baseDate() {
-    var d = new Date();
+  function mondayOnOrBefore(date) {
+    var d = new Date(date);
     d.setHours(0, 0, 0, 0);
     var wd = d.getDay();
     var backToMonday = (wd === 0) ? 6 : (wd - 1);
     d.setDate(d.getDate() - backToMonday);
-    d.setDate(d.getDate() + WEEK_OFFSET * 7);
     return d;
+  }
+  function isoDateString(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+  function parseIsoDate(s) {
+    var parts = String(s || '').split('-');
+    if (parts.length !== 3) return null;
+    var y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
+    if (!isFinite(y) || !isFinite(m) || !isFinite(d)) return null;
+    var date = new Date(y, m - 1, d);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  // baseDate is a fixed calendar anchor (the Monday behind column 0), set via timelineStartDate
+  // rather than derived from "today" — so the grid stays put once the file is saved/reopened.
+  function baseDate() {
+    return new Date(timelineStartDate);
   }
   function dateForWeek(w) {
     var d = new Date(baseDate());
@@ -479,11 +617,7 @@
     return d;
   }
   function todayWeekIndex() {
-    var t = new Date();
-    t.setHours(0, 0, 0, 0);
-    var wd = t.getDay();
-    var backToMonday = (wd === 0) ? 6 : (wd - 1);
-    t.setDate(t.getDate() - backToMonday);
+    var t = mondayOnOrBefore(new Date());
     return Math.round((t - baseDate()) / (7 * 86400000));
   }
   function todayFractionWithinWeek() {
@@ -603,7 +737,7 @@
   }
 
   function currentStateData() {
-    return { version: 2, unit: 'week', resources: resources, nextId: nextId };
+    return { version: 2, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId };
   }
 
   function persistState() {
@@ -690,7 +824,6 @@
 
   function updateFileUi() {
     openFileBtn.style.display = fsApiSupported ? '' : 'none';
-    saveAsBtn.style.display = fsApiSupported ? '' : 'none';
     reconnectBtn.style.display = (fsApiSupported && pendingReconnectHandle) ? '' : 'none';
     if (pendingReconnectHandle) {
       reconnectBtn.textContent = 'Reconnect ' + (pendingReconnectFileName || 'file');
@@ -700,13 +833,14 @@
   function updateLockState() {
     var locked = fsApiSupported && !fileHandle;
     editableArea.classList.toggle('locked', locked);
-    addForm.classList.toggle('is-locked', locked);
     lockOverlay.style.display = locked ? '' : 'none';
   }
 
   function applyState(data) {
     if (!data || !Array.isArray(data.resources)) return false;
     var isWeekUnit = data.unit === 'week';
+    var parsedStart = data.timelineStart ? parseIsoDate(data.timelineStart) : null;
+    timelineStartDate = parsedStart ? mondayOnOrBefore(parsedStart) : mondayOnOrBefore(new Date());
     resources = data.resources.map(function (r) {
       var rawStart = Number(r.start) || 0;
       var rawDuration = Math.max(1, Number(r.duration) || 1);
@@ -742,7 +876,7 @@
 
   function gridBackground() {
     var todayLeft = (todayWeekIndex() + todayFractionWithinWeek()) * WEEK_WIDTH;
-    var images = ['linear-gradient(var(--series-1), var(--series-1))'];
+    var images = ['linear-gradient(var(--today-marker), var(--today-marker))'];
     var sizes = ['2px 100%'];
     var positions = [(LABEL_WIDTH + todayLeft) + 'px 0'];
     var repeats = ['no-repeat'];
@@ -870,11 +1004,17 @@
   }
 
   function render() {
-    viewToggleBtn.textContent = 'View: ' + (viewMode === 'resource' ? 'Resource' : 'Projects');
+    viewToggleBtns.forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.view === viewMode);
+    });
+    appEl.dataset.viewMode = viewMode;
+    timelineStartInput.value = isoDateString(timelineStartDate);
     renderResourceFilterChips();
     renderProjectFilterChips();
+    filtersBlock.style.display = (resourceFilterBar.style.display !== 'none' || projectFilterBar.style.display !== 'none') ? '' : 'none';
 
     grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
+    colResizeHandle.style.left = LABEL_WIDTH + 'px';
     var bg = gridBackground();
     grid.style.backgroundImage = bg.backgroundImage;
     grid.style.backgroundSize = bg.backgroundSize;
@@ -890,7 +1030,7 @@
     });
 
     // Week row
-    html += '<div class="cell label-cell header-cell">Timeline</div>';
+    html += '<div class="cell label-cell header-cell timeline-label">Timeline</div>';
     var tIdx = todayWeekIndex();
     for (var w = 0; w < TOTAL_WEEKS; w++) {
       var isToday = (w === tIdx);
@@ -927,6 +1067,7 @@
       html += '<div class="cell label-cell' + groupClass + '" data-project="' + escapeAttr(group.name) + '">' +
         '<button type="button" class="collapse-toggle' + (isCollapsed ? ' collapsed' : '') + '" data-project="' + escapeAttr(group.name) + '" title="' + (isCollapsed ? 'Expand' : 'Collapse') + ' ' + groupNoun + '">▾</button>' +
         '<input class="project-label-input" data-role="group-project" data-project="' + escapeAttr(group.name) + '" value="' + escapeAttr(group.name) + '" title="' + renameHint + '" style="color: var(--series-' + colorSlot + ')" />' +
+        '<button type="button" class="add-entry-btn" data-group="' + escapeAttr(group.name) + '" title="' + (viewMode === 'resource' ? 'Add assignment for ' + escapeAttr(group.name) : 'Add resource to ' + escapeAttr(group.name)) + '">+</button>' +
         (isCollapsed ? '<span class="collapse-count">' + visibleResources.length + '</span>' : '') +
         '</div>';
       html += '<div class="cell track-cell project-track' + groupClass + '" data-project="' + escapeAttr(group.name) + '" style="grid-column: span ' + TOTAL_WEEKS + '">';
@@ -988,9 +1129,20 @@
       var note = document.createElement('div');
       note.className = 'empty-state';
       note.style.gridColumn = '1 / -1';
-      note.textContent = resources.length
-        ? 'No resources match the current filter.'
-        : 'No resources yet — add one above to start building the timeline.';
+      if (resources.length) {
+        note.textContent = 'No resources match the current filter.';
+      } else {
+        var emptyMsg = document.createElement('div');
+        emptyMsg.textContent = 'No resources yet.';
+        var emptyAddBtn = document.createElement('button');
+        emptyAddBtn.type = 'button';
+        emptyAddBtn.className = 'ghost-btn';
+        emptyAddBtn.style.marginTop = '10px';
+        emptyAddBtn.textContent = '+ Add resource';
+        emptyAddBtn.addEventListener('click', function () { openAddModal(); });
+        note.appendChild(emptyMsg);
+        note.appendChild(emptyAddBtn);
+      }
       grid.appendChild(note);
     }
 
@@ -1006,6 +1158,31 @@
   }
 
   // ---- Add resource ----
+  // ---- Add-resource modal ----
+  function openAddModal(prefill) {
+    prefill = prefill || {};
+    projectInput.value = prefill.project || '';
+    nameInput.value = prefill.name || '';
+    allocInput.value = '100';
+    addModalOverlay.style.display = 'flex';
+    var focusTarget = prefill.name ? projectInput : nameInput;
+    focusTarget.focus();
+    if (focusTarget.select) focusTarget.select();
+  }
+
+  function closeAddModal() {
+    addModalOverlay.style.display = 'none';
+  }
+
+  addModalClose.addEventListener('click', closeAddModal);
+  addModalCancel.addEventListener('click', closeAddModal);
+  addModalOverlay.addEventListener('click', function (e) {
+    if (e.target === addModalOverlay) closeAddModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && addModalOverlay.style.display !== 'none') closeAddModal();
+  });
+
   addForm.addEventListener('submit', function (e) {
     e.preventDefault();
     var name = nameInput.value.trim();
@@ -1019,9 +1196,7 @@
       : todayWeekIndex();
     start = clamp(start, 0, TOTAL_WEEKS - DEFAULT_DURATION);
     addResourceInternal(name, allocation, start, DEFAULT_DURATION, project);
-    nameInput.value = '';
-    allocInput.value = '100';
-    nameInput.focus();
+    closeAddModal();
     render();
     scheduleSave();
   });
@@ -1041,6 +1216,12 @@
       resources = resources.filter(function (r) { return r.id !== id; });
       render();
       scheduleSave();
+      return;
+    }
+    var addBtn = e.target.closest('.add-entry-btn');
+    if (addBtn) {
+      var groupName = addBtn.dataset.group || '';
+      openAddModal(viewMode === 'resource' ? { name: groupName } : { project: groupName });
       return;
     }
     var weekCell = e.target.closest('.week-cell');
@@ -1313,6 +1494,34 @@
     window.addEventListener('pointerup', onUp);
   });
 
+  // ---- Label column resize ----
+  colResizeHandle.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var startX = e.clientX;
+    var startWidth = LABEL_WIDTH;
+    colResizeHandle.classList.add('dragging');
+    try { colResizeHandle.setPointerCapture(e.pointerId); } catch (err) {}
+
+    function onMove(ev) {
+      LABEL_WIDTH = clamp(startWidth + (ev.clientX - startX), MIN_LABEL_WIDTH, MAX_LABEL_WIDTH);
+      colResizeHandle.style.left = LABEL_WIDTH + 'px';
+      grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
+      var bg = gridBackground();
+      grid.style.backgroundImage = bg.backgroundImage;
+      grid.style.backgroundSize = bg.backgroundSize;
+      grid.style.backgroundPosition = bg.backgroundPosition;
+      grid.style.backgroundRepeat = bg.backgroundRepeat;
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      colResizeHandle.classList.remove('dragging');
+      try { localStorage.setItem('gantt-label-width', String(LABEL_WIDTH)); } catch (err) {}
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
   // ---- Linked file controls ----
   function handleOpenFile() {
     window.showOpenFilePicker({
@@ -1350,10 +1559,29 @@
     });
   }
 
-  viewToggleBtn.addEventListener('click', function () {
-    viewMode = viewMode === 'project' ? 'resource' : 'project';
+  viewToggle.addEventListener('click', function (e) {
+    var btn = e.target.closest('.view-toggle-btn');
+    if (!btn || btn.dataset.view === viewMode) return;
+    viewMode = btn.dataset.view;
     try { localStorage.setItem('gantt-view-mode', viewMode); } catch (err) {}
     render();
+  });
+
+  // Changing the start date pans the visible window: resource weeks shift so their
+  // actual calendar dates stay put, rather than jumping to a different week.
+  timelineStartInput.addEventListener('change', function () {
+    var picked = parseIsoDate(timelineStartInput.value);
+    if (!picked) { timelineStartInput.value = isoDateString(timelineStartDate); return; }
+    var newStart = mondayOnOrBefore(picked);
+    var deltaWeeks = Math.round((timelineStartDate - newStart) / (7 * 86400000));
+    if (deltaWeeks !== 0) {
+      resources.forEach(function (r) {
+        r.start = clamp(r.start + deltaWeeks, 0, TOTAL_WEEKS - 1);
+      });
+    }
+    timelineStartDate = newStart;
+    render();
+    scheduleSave();
   });
 
   openFileBtn.addEventListener('click', handleOpenFile);
@@ -1382,7 +1610,7 @@
   // ---- Export ----
   exportBtn.addEventListener('click', function () {
     var data = {
-      version: 2, unit: 'week', resources: resources, nextId: nextId,
+      version: 2, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId,
       exportedAt: new Date().toISOString()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1393,6 +1621,233 @@
     a.click();
     URL.revokeObjectURL(url);
     flashStatus('Exported gantt-project.json');
+  });
+
+  // ---- Export PNG (draws the currently visible chart onto an offscreen canvas) ----
+  function cssVar(name) {
+    return getComputedStyle(appEl).getPropertyValue(name).trim();
+  }
+
+  function hexToRgb(hex) {
+    hex = hex.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+    var num = parseInt(hex, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+
+  function blendHex(hexA, hexB, amountA) {
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = Math.round(a.r * amountA + b.r * (1 - amountA));
+    var g = Math.round(a.g * amountA + b.g * (1 - amountA));
+    var bl = Math.round(a.b * amountA + b.b * (1 - amountA));
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function truncateText(ctx, text, maxWidth) {
+    text = String(text);
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    while (text.length > 1 && ctx.measureText(text + '…').width > maxWidth) {
+      text = text.slice(0, -1);
+    }
+    return text + '…';
+  }
+
+  // Mirrors render()'s grouping/filtering logic to decide what the export should include.
+  function visibleExportRows() {
+    var groups = displayGroups();
+    var isFiltered = resourceFilter !== null;
+    var isProjectFiltered = projectFilter !== null;
+    var rows = [];
+    groups.forEach(function (group, gi) {
+      var visibleResources = group.resources.filter(function (r) {
+        var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
+        var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
+        return nameOk && projOk;
+      });
+      if ((isFiltered || isProjectFiltered) && !visibleResources.length) return;
+      var colorSlot = (gi % 8) + 1;
+      var range = projectRangeFor(visibleResources);
+      rows.push({ type: 'group', name: group.name, range: range, colorSlot: colorSlot });
+      if (!collapsedGroups[viewMode][group.name]) {
+        visibleResources.forEach(function (r) {
+          rows.push({ type: 'entry', r: r, colorSlot: colorSlot });
+        });
+      }
+    });
+    return rows;
+  }
+
+  function renderChartCanvas() {
+    var rows = visibleExportRows();
+    if (!rows.length) return null;
+
+    var MONTH_H = 24, WEEK_H = 30, GROUP_H = 46, ENTRY_H = 54;
+    var headerH = MONTH_H + WEEK_H;
+    var bodyH = rows.reduce(function (sum, row) { return sum + (row.type === 'group' ? GROUP_H : ENTRY_H); }, 0);
+    var width = LABEL_WIDTH + TOTAL_WEEKS * WEEK_WIDTH;
+    var height = headerH + bodyH;
+    var scale = 2;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(width * scale);
+    canvas.height = Math.ceil(height * scale);
+    var ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+
+    var surface = cssVar('--surface-1');
+    var textPrimary = cssVar('--text-primary');
+    var textSecondary = cssVar('--text-secondary');
+    var textMuted = cssVar('--text-muted');
+    var gridline = cssVar('--gridline');
+    var border = cssVar('--border');
+    var today = cssVar('--today-marker');
+    var seriesColors = [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return cssVar('--series-' + n); });
+    var fontFamily = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+
+    ctx.fillStyle = surface;
+    ctx.fillRect(0, 0, width, height);
+    ctx.textBaseline = 'middle';
+
+    // Month row
+    ctx.font = '600 11px ' + fontFamily;
+    var mx = LABEL_WIDTH;
+    monthSegments().forEach(function (seg) {
+      var segW = seg.count * WEEK_WIDTH;
+      ctx.strokeStyle = gridline;
+      ctx.beginPath(); ctx.moveTo(mx + 0.5, 0); ctx.lineTo(mx + 0.5, MONTH_H); ctx.stroke();
+      ctx.fillStyle = textSecondary;
+      ctx.fillText(seg.label, mx + 6, MONTH_H - 8);
+      mx += segW;
+    });
+    ctx.strokeStyle = gridline;
+    ctx.beginPath(); ctx.moveTo(0, MONTH_H + 0.5); ctx.lineTo(width, MONTH_H + 0.5); ctx.stroke();
+
+    // Week row: "Timeline" label tinted with the current view's marker color, plus today highlight
+    ctx.fillStyle = blendHex(today, surface, 0.18);
+    ctx.fillRect(0, MONTH_H, LABEL_WIDTH, WEEK_H);
+    ctx.fillStyle = today;
+    ctx.font = 'bold 13px ' + fontFamily;
+    ctx.fillText('Timeline', 10, MONTH_H + WEEK_H / 2);
+
+    var tIdx = todayWeekIndex();
+    ctx.font = '600 11px ' + fontFamily;
+    for (var w = 0; w < TOTAL_WEEKS; w++) {
+      var wx = LABEL_WIDTH + w * WEEK_WIDTH;
+      if (w === tIdx) {
+        ctx.fillStyle = blendHex(today, surface, 0.14);
+        ctx.fillRect(wx, MONTH_H, WEEK_WIDTH, WEEK_H);
+      }
+      ctx.strokeStyle = gridline;
+      ctx.beginPath(); ctx.moveTo(wx + 0.5, MONTH_H); ctx.lineTo(wx + 0.5, MONTH_H + WEEK_H); ctx.stroke();
+      ctx.fillStyle = (w === tIdx) ? today : textSecondary;
+      ctx.fillText(weekCellLabel(w), wx + 6, MONTH_H + WEEK_H / 2);
+    }
+    ctx.strokeStyle = gridline;
+    ctx.beginPath(); ctx.moveTo(0, headerH + 0.5); ctx.lineTo(width, headerH + 0.5); ctx.stroke();
+
+    // Rows
+    var y = headerH;
+    rows.forEach(function (row) {
+      var h = row.type === 'group' ? GROUP_H : ENTRY_H;
+      var color = seriesColors[(row.colorSlot - 1) % 8];
+
+      if (row.type === 'group') {
+        ctx.font = '600 13px ' + fontFamily;
+        ctx.fillStyle = color;
+        ctx.fillText(truncateText(ctx, row.name, LABEL_WIDTH - 24), 12, y + h / 2);
+      } else {
+        var r = row.r;
+        var labelText = viewMode === 'resource' ? (r.project || 'Untitled Project') : (r.name || 'Untitled');
+        ctx.font = '13px ' + fontFamily;
+        ctx.fillStyle = textPrimary;
+        ctx.fillText(truncateText(ctx, labelText, LABEL_WIDTH - 90), 12, y + h / 2);
+        ctx.font = '600 12px ' + fontFamily;
+        ctx.fillStyle = textMuted;
+        ctx.textAlign = 'right';
+        ctx.fillText(r.allocation + '%', LABEL_WIDTH - 16, y + h / 2);
+        ctx.textAlign = 'left';
+      }
+
+      ctx.strokeStyle = border;
+      ctx.beginPath(); ctx.moveTo(LABEL_WIDTH + 0.5, y); ctx.lineTo(LABEL_WIDTH + 0.5, y + h); ctx.stroke();
+
+      ctx.strokeStyle = gridline;
+      for (var wcol = 0; wcol <= TOTAL_WEEKS; wcol++) {
+        var gx = LABEL_WIDTH + wcol * WEEK_WIDTH;
+        ctx.beginPath(); ctx.moveTo(gx + 0.5, y); ctx.lineTo(gx + 0.5, y + h); ctx.stroke();
+      }
+
+      if (row.type === 'group') {
+        if (row.range) {
+          var gx0 = LABEL_WIDTH + row.range.start * WEEK_WIDTH;
+          var gw = (row.range.end - row.range.start) * WEEK_WIDTH;
+          ctx.fillStyle = blendHex(color, surface, 0.28);
+          ctx.strokeStyle = color;
+          roundRectPath(ctx, gx0 + 2, y + h / 2 - 10, Math.max(gw - 4, 1), 20, 6);
+          ctx.fill(); ctx.stroke();
+        }
+      } else {
+        var bx = LABEL_WIDTH + row.r.start * WEEK_WIDTH;
+        var bw = row.r.duration * WEEK_WIDTH;
+        ctx.fillStyle = color;
+        roundRectPath(ctx, bx + 3, y + h / 2 - 13, Math.max(bw - 6, 1), 26, 6);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px ' + fontFamily;
+        ctx.textAlign = 'left';
+        ctx.fillText(row.r.allocation + '%', bx + 11, y + h / 2);
+      }
+
+      ctx.strokeStyle = gridline;
+      ctx.beginPath(); ctx.moveTo(0, y + h + 0.5); ctx.lineTo(width, y + h + 0.5); ctx.stroke();
+
+      y += h;
+    });
+
+    ctx.strokeStyle = border;
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+    return canvas;
+  }
+
+  function downloadDataUrl(dataUrl, filename) {
+    var a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    a.click();
+  }
+
+  exportPngBtn.addEventListener('click', function () {
+    var canvas = renderChartCanvas();
+    if (!canvas) { flashStatus('Nothing to export yet'); return; }
+    downloadDataUrl(canvas.toDataURL('image/png'), 'gantt-chart.png');
+    flashStatus('Exported gantt-chart.png');
+  });
+
+  // ---- Export PDF (uses the browser's native print-to-PDF via a print stylesheet) ----
+  exportPdfBtn.addEventListener('click', function () {
+    var ganttCardEl = document.querySelector('.gantt-card');
+    var contentWidth = LABEL_WIDTH + TOTAL_WEEKS * WEEK_WIDTH;
+    var printableWidthPx = 1050; // approx landscape page width minus margins at 96dpi
+    var zoomLevel = Math.min(1, printableWidthPx / contentWidth);
+    ganttCardEl.style.zoom = zoomLevel;
+    function resetZoom() {
+      ganttCardEl.style.zoom = '';
+      window.removeEventListener('afterprint', resetZoom);
+    }
+    window.addEventListener('afterprint', resetZoom);
+    window.print();
   });
 
   // ---- Init ----
