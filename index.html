@@ -429,6 +429,7 @@
             <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
           </div>
           <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
+          <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort projects or resources alphabetically, depending on the current view">Sort A-Z</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
           <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
@@ -554,6 +555,7 @@
   var viewToggleBtns = viewToggle.querySelectorAll('.view-toggle-btn');
   var timelineStartInput = document.getElementById('timelineStartInput');
   var densityToggleBtn = document.getElementById('densityToggleBtn');
+  var sortAzBtn = document.getElementById('sortAzBtn');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -738,6 +740,16 @@
     var toIdx = resources.findIndex(function (r) { return r.id === targetId; });
     if (toIdx === -1) { resources.splice(fromIdx, 0, moved); return; }
     resources.splice(insertAfter ? toIdx + 1 : toIdx, 0, moved);
+  }
+
+  // Reorders groups (projects or resources, whichever the current view groups by) alphabetically,
+  // keeping each group's own internal row order untouched.
+  function sortGroupsAlphabetically() {
+    var groups = displayGroups();
+    groups.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
+    var sorted = [];
+    groups.forEach(function (g) { sorted = sorted.concat(g.resources); });
+    resources = sorted;
   }
 
   // ---- Persistence ----
@@ -1595,6 +1607,12 @@
     density = density === 'narrow' ? 'normal' : 'narrow';
     try { localStorage.setItem('gantt-density', density); } catch (err) {}
     render();
+  });
+
+  sortAzBtn.addEventListener('click', function () {
+    sortGroupsAlphabetically();
+    render();
+    scheduleSave();
   });
 
   // Changing the start date pans the visible window: resource weeks shift so their
