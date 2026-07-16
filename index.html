@@ -158,6 +158,8 @@
   .view-toggle-btn:hover { background: var(--page-plane); }
   .view-toggle-btn.active { background: var(--series-1); color: #fff; }
   .view-toggle-btn.active:hover { filter: brightness(1.05); }
+  .view-toggle-btn[data-view="resource"].active,
+  .view-toggle-btn[data-panel-view="resource"].active { background: var(--series-8); }
   .save-status { margin-left: auto; font-size: 11px; color: var(--text-muted); transition: color .2s; }
   .save-status.flash { color: var(--series-2); font-weight: 600; }
 
