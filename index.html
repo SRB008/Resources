@@ -752,11 +752,23 @@
     });
   }
 
-  function projectRangeFor(list) {
-    if (!list.length) return null;
-    var start = Math.min.apply(null, list.map(function (r) { return r.start; }));
-    var end = Math.max.apply(null, list.map(function (r) { return r.start + r.duration; }));
-    return { start: start, end: end };
+  // Merges each resource's [start, start+duration) span into the smallest set of non-overlapping,
+  // sorted ranges that actually have coverage — so the group bar only spans time where at least
+  // one resource/project is active, and shows a gap (rather than one continuous bar) where none are.
+  function projectRangesFor(list) {
+    if (!list.length) return [];
+    var intervals = list.map(function (r) { return { start: r.start, end: r.start + r.duration }; })
+      .sort(function (a, b) { return a.start - b.start; });
+    var merged = [{ start: intervals[0].start, end: intervals[0].end }];
+    for (var i = 1; i < intervals.length; i++) {
+      var last = merged[merged.length - 1];
+      if (intervals[i].start <= last.end) {
+        last.end = Math.max(last.end, intervals[i].end);
+      } else {
+        merged.push({ start: intervals[i].start, end: intervals[i].end });
+      }
+    }
+    return merged;
   }
 
   function keyForProject(r) { return r.project || 'Untitled Project'; }
@@ -1236,7 +1248,7 @@
       if (!visibleResources.length) return;
       renderedAny = true;
 
-      var range = projectRangeFor(visibleResources);
+      var ranges = projectRangesFor(visibleResources);
       var colorSlot = (gi % 8) + 1;
       var groupClass = gi > 0 ? ' group-divider' : '';
       var isCollapsed = !!collapsedGroups[viewMode][group.name];
@@ -1251,15 +1263,19 @@
         (isCollapsed ? '<span class="collapse-count">' + visibleResources.length + '</span>' : '') +
         '</div>';
       html += '<div class="cell track-cell project-track' + groupClass + '" data-project="' + escapeAttr(group.name) + '" style="grid-column: span ' + TOTAL_WEEKS + '">';
-      var clippedRange = range ? clipRangeToView(range.start, range.end - range.start) : null;
-      if (clippedRange) {
+      var anyBarVisible = false;
+      ranges.forEach(function (seg) {
+        var clippedRange = clipRangeToView(seg.start, seg.end - seg.start);
+        if (!clippedRange) return;
+        anyBarVisible = true;
         var pLeft = clippedRange.start * WEEK_WIDTH;
         var pWidth = (clippedRange.end - clippedRange.start) * WEEK_WIDTH;
-        var weeks = range.end - range.start;
-        var pTitle = escapeAttr(group.name + ': ' + rangeLabelShortAnchor(range.start, range.end) + ' (' + weeks + 'w)');
+        var weeks = seg.end - seg.start;
+        var pTitle = escapeAttr(group.name + ': ' + rangeLabelShortAnchor(seg.start, seg.end) + ' (' + weeks + 'w)');
         var pTruncClass = clippedRange.truncatedLeft ? ' bar-truncated-left' : '';
         html += '<div class="project-bar' + pTruncClass + '" title="' + pTitle + '" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
-      } else {
+      });
+      if (!anyBarVisible) {
         html += '<div class="project-empty">' + (viewMode === 'resource' ? 'No assignments for this resource yet' : 'No resources in this project yet') + '</div>';
       }
       html += '</div>';
@@ -1633,19 +1649,22 @@
       var group = dragGroups[groupIndex];
       if (!group) return;
       var stillVisible = group.resources.filter(function (r) { return !!clipRangeToView(r.start, r.duration); });
-      var range = projectRangeFor(stillVisible);
+      var ranges = projectRangesFor(stillVisible);
       var esc = (window.CSS && CSS.escape) ? CSS.escape(group.name) : group.name.replace(/"/g, '\\"');
       var groupTrackEl = grid.querySelector('.project-track[data-project="' + esc + '"]');
       if (!groupTrackEl) return;
-      var pBar = groupTrackEl.querySelector('.project-bar');
-      var clippedRange = range ? clipRangeToView(range.start, range.end - range.start) : null;
-      if (clippedRange && pBar) {
+      var colorSlot = (groupIndex % 8) + 1;
+      var barsHtml = '';
+      ranges.forEach(function (seg) {
+        var clippedRange = clipRangeToView(seg.start, seg.end - seg.start);
+        if (!clippedRange) return;
         var pLeft = clippedRange.start * WEEK_WIDTH;
         var pWidth = (clippedRange.end - clippedRange.start) * WEEK_WIDTH;
-        pBar.style.left = pLeft + 'px';
-        pBar.style.width = pWidth + 'px';
-        pBar.title = group.name + ': ' + rangeLabelShortAnchor(range.start, range.end) + ' (' + (range.end - range.start) + 'w)';
-      }
+        var pTitle = escapeAttr(group.name + ': ' + rangeLabelShortAnchor(seg.start, seg.end) + ' (' + (seg.end - seg.start) + 'w)');
+        var pTruncClass = clippedRange.truncatedLeft ? ' bar-truncated-left' : '';
+        barsHtml += '<div class="project-bar' + pTruncClass + '" title="' + pTitle + '" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
+      });
+      groupTrackEl.innerHTML = barsHtml || ('<div class="project-empty">' + (viewMode === 'resource' ? 'No assignments for this resource yet' : 'No resources in this project yet') + '</div>');
     }
 
     function onMove(ev) {
@@ -1906,8 +1925,8 @@
       });
       if (!visibleResources.length) return;
       var colorSlot = (gi % 8) + 1;
-      var range = projectRangeFor(visibleResources);
-      rows.push({ type: 'group', name: group.name, range: range, colorSlot: colorSlot });
+      var ranges = projectRangesFor(visibleResources);
+      rows.push({ type: 'group', name: group.name, ranges: ranges, colorSlot: colorSlot });
       if (!collapsedGroups[viewMode][group.name]) {
         visibleResources.forEach(function (r) {
           rows.push({ type: 'entry', r: r, colorSlot: colorSlot });
@@ -2020,15 +2039,16 @@
       }
 
       if (row.type === 'group') {
-        var gClipped = row.range ? clipRangeToView(row.range.start, row.range.end - row.range.start) : null;
-        if (gClipped) {
+        row.ranges.forEach(function (seg) {
+          var gClipped = clipRangeToView(seg.start, seg.end - seg.start);
+          if (!gClipped) return;
           var gx0 = LABEL_WIDTH + gClipped.start * WEEK_WIDTH;
           var gw = (gClipped.end - gClipped.start) * WEEK_WIDTH;
           ctx.fillStyle = blendHex(color, surface, 0.28);
           ctx.strokeStyle = color;
           roundRectPath(ctx, gx0 + 2, y + h / 2 - 10, Math.max(gw - 4, 1), 20, 6);
           ctx.fill(); ctx.stroke();
-        }
+        });
       } else {
         var rClipped = clipRangeToView(row.r.start, row.r.duration);
         var bx = LABEL_WIDTH + rClipped.start * WEEK_WIDTH;
