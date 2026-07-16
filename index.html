@@ -364,6 +364,10 @@
   }
   .bar .handle.left { left: -2px; }
   .bar .handle.right { right: -2px; }
+  /* Left edge is flattened (no resize-left handle) when a bar's true start is earlier than the visible window; the bar can still be dragged/resized from the right. */
+  .bar.bar-truncated-left, .project-bar.bar-truncated-left {
+    border-top-left-radius: 0; border-bottom-left-radius: 0;
+  }
 
   .row-label.resource-label { gap: 8px; }
   .resource-label-top { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
@@ -533,6 +537,10 @@
 (function () {
   var TOTAL_WEEKS = 26;
   var WEEK_WIDTH = 100;
+  // Fixed, never-changing internal reference point. Resource start/duration are always stored
+  // as week-offsets from this Monday, so a resource's real calendar dates never move when the
+  // visible timeline window (timelineStartDate) is panned — only what's on screen changes.
+  var DATA_EPOCH = new Date(2000, 0, 3);
   var MIN_LABEL_WIDTH = 160;
   var MAX_LABEL_WIDTH = 480;
   var LABEL_WIDTH = 220;
@@ -667,6 +675,38 @@
   function fmtLong(d) { return d.toLocaleDateString('en-GB', { month: 'long', day: 'numeric', year: 'numeric' }); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+  // Resource start/duration are stored relative to DATA_EPOCH ("anchor" week numbers). The grid's
+  // visible columns are relative to timelineStartDate ("view" week numbers). viewOffsetWeeks is the
+  // number of anchor-weeks between them, so anchorWeek = viewWeek + offset, viewWeek = anchorWeek - offset.
+  function viewOffsetWeeks() {
+    return Math.round((timelineStartDate - DATA_EPOCH) / (7 * 86400000));
+  }
+  function dateForAnchorWeek(w) {
+    var d = new Date(DATA_EPOCH);
+    d.setDate(d.getDate() + w * 7);
+    return d;
+  }
+  function weekEndDateForAnchor(w) {
+    var d = dateForAnchorWeek(w);
+    d.setDate(d.getDate() + 6);
+    return d;
+  }
+  function rangeLabelShortAnchor(startW, endWExclusive) {
+    return fmtShort(dateForAnchorWeek(startW)) + ' – ' + fmtShort(weekEndDateForAnchor(endWExclusive - 1));
+  }
+  // Converts an anchor-relative [start, start+duration) range into visible-column coordinates.
+  // Returns null if the range had already finished before the visible window starts (hidden);
+  // otherwise the start is pinned to column 0 when it began earlier ("remaining time only") —
+  // the right edge is never clipped, matching how bars have always been free to run past the
+  // last visible week.
+  function clipRangeToView(anchorStart, anchorDuration) {
+    var offset = viewOffsetWeeks();
+    var viewStart = anchorStart - offset;
+    var viewEnd = viewStart + anchorDuration;
+    if (viewEnd <= 0) return null;
+    return { start: Math.max(viewStart, 0), end: viewEnd, truncatedLeft: viewStart < 0 };
+  }
+
   function rangeLabelShort(startW, endWExclusive) {
     return fmtShort(dateForWeek(startW)) + ' – ' + fmtShort(weekEndDate(endWExclusive - 1));
   }
@@ -698,13 +738,14 @@
     return sorted.length + ' weeks selected (' + parts.join(', ') + ')';
   }
 
+  // `start` is anchor-relative (weeks from DATA_EPOCH) — callers convert from view coordinates.
   function addResourceInternal(name, allocation, start, duration, project) {
     resources.push({
       id: nextId++,
       name: name,
       project: project || 'Untitled Project',
       allocation: allocation,
-      start: clamp(start, 0, TOTAL_WEEKS - 1),
+      start: Math.round(start),
       duration: Math.max(1, duration)
     });
   }
@@ -786,7 +827,9 @@
   }
 
   function currentStateData() {
-    return { version: 2, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId };
+    // version 3: resource start/duration are stored relative to the fixed DATA_EPOCH, not
+    // relative to timelineStart, so panning the view never rewrites saved dates.
+    return { version: 3, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId };
   }
 
   function persistState() {
@@ -888,8 +931,19 @@
   function applyState(data) {
     if (!data || !Array.isArray(data.resources)) return false;
     var isWeekUnit = data.unit === 'week';
+    var savedVersion = Number(data.version) || 1;
     var parsedStart = data.timelineStart ? parseIsoDate(data.timelineStart) : null;
     timelineStartDate = parsedStart ? mondayOnOrBefore(parsedStart) : mondayOnOrBefore(new Date());
+
+    // Files saved before version 3 stored start/duration relative to their own timelineStart
+    // (panning used to rewrite every resource's start). Migrate those into DATA_EPOCH-relative
+    // numbers once on load so this and every later load/save stays put regardless of panning.
+    var migrateOffsetWeeks = 0;
+    if (savedVersion < 3) {
+      var oldAnchor = parsedStart || timelineStartDate;
+      migrateOffsetWeeks = Math.round((oldAnchor - DATA_EPOCH) / (7 * 86400000));
+    }
+
     resources = data.resources.map(function (r) {
       var rawStart = Number(r.start) || 0;
       var rawDuration = Math.max(1, Number(r.duration) || 1);
@@ -900,7 +954,7 @@
         name: String(r.name || ''),
         project: String(r.project || 'Untitled Project'),
         allocation: isFinite(Number(r.allocation)) ? Number(r.allocation) : 0,
-        start: clamp(start, 0, TOTAL_WEEKS - 1),
+        start: start + migrateOffsetWeeks,
         duration: duration
       };
     });
@@ -1026,12 +1080,14 @@
     panelDate.textContent = selectedWeeksLabel();
 
     var isResourceView = panelViewMode === 'resource';
+    var panelOffset = viewOffsetWeeks();
 
     if (isResourceView) {
       var allProjectNames = projectGroups().map(function (g) { return g.name; });
       var isAll = panelFilter === null;
       var active = resources.filter(function (r) {
-        var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
+        var rViewStart = r.start - panelOffset;
+        var inRange = selectedWeeks.some(function (w) { return w >= rViewStart && w < rViewStart + r.duration; });
         var inFilter = isAll || panelFilter.indexOf(r.project || 'Untitled Project') !== -1;
         return inRange && inFilter;
       });
@@ -1064,14 +1120,15 @@
           if (projectNames.indexOf(p) === -1) projectNames.push(p);
         });
         var subtitle = projectNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
-        var rangeText = g.entries.length === 1 ? rangeLabelShort(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
+        var rangeText = g.entries.length === 1 ? rangeLabelShortAnchor(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
         return panelRowHtml(g.name, subtitle, rangeText, g.total);
       }).join('');
     } else {
       var allResNames = uniqueResourceNames();
       var isAllRes = panelResourceFilter === null;
       var activeR = resources.filter(function (r) {
-        var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
+        var rViewStart2 = r.start - panelOffset;
+        var inRange = selectedWeeks.some(function (w) { return w >= rViewStart2 && w < rViewStart2 + r.duration; });
         var inFilter = isAllRes || panelResourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
         return inRange && inFilter;
       });
@@ -1104,7 +1161,7 @@
           if (resNames.indexOf(n) === -1) resNames.push(n);
         });
         var subtitle = resNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
-        var rangeText = g.entries.length === 1 ? rangeLabelShort(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
+        var rangeText = g.entries.length === 1 ? rangeLabelShortAnchor(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
         return panelRowHtml(g.name, subtitle, rangeText, g.total);
       }).join('');
     }
@@ -1160,9 +1217,10 @@
       var visibleResources = group.resources.filter(function (r) {
         var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
         var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
-        return nameOk && projOk;
+        var inView = !!clipRangeToView(r.start, r.duration);
+        return nameOk && projOk && inView;
       });
-      if ((isFiltered || isProjectFiltered) && !visibleResources.length) return;
+      if (!visibleResources.length) return;
       renderedAny = true;
 
       var range = projectRangeFor(visibleResources);
@@ -1180,12 +1238,14 @@
         (isCollapsed ? '<span class="collapse-count">' + visibleResources.length + '</span>' : '') +
         '</div>';
       html += '<div class="cell track-cell project-track' + groupClass + '" data-project="' + escapeAttr(group.name) + '" style="grid-column: span ' + TOTAL_WEEKS + '">';
-      if (range) {
-        var pLeft = range.start * WEEK_WIDTH;
-        var pWidth = (range.end - range.start) * WEEK_WIDTH;
+      var clippedRange = range ? clipRangeToView(range.start, range.end - range.start) : null;
+      if (clippedRange) {
+        var pLeft = clippedRange.start * WEEK_WIDTH;
+        var pWidth = (clippedRange.end - clippedRange.start) * WEEK_WIDTH;
         var weeks = range.end - range.start;
-        var pTitle = escapeAttr(group.name + ': ' + rangeLabelShort(range.start, range.end) + ' (' + weeks + 'w)');
-        html += '<div class="project-bar" title="' + pTitle + '" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
+        var pTitle = escapeAttr(group.name + ': ' + rangeLabelShortAnchor(range.start, range.end) + ' (' + weeks + 'w)');
+        var pTruncClass = clippedRange.truncatedLeft ? ' bar-truncated-left' : '';
+        html += '<div class="project-bar' + pTruncClass + '" title="' + pTitle + '" style="left:' + pLeft + 'px; width:' + pWidth + 'px; background-image: none; background-color: color-mix(in srgb, var(--series-' + colorSlot + ') 22%, transparent); border-color: var(--series-' + colorSlot + ')"></div>';
       } else {
         html += '<div class="project-empty">' + (viewMode === 'resource' ? 'No assignments for this resource yet' : 'No resources in this project yet') + '</div>';
       }
@@ -1212,12 +1272,15 @@
           '</div>' +
           '</div>';
 
-        var left = r.start * WEEK_WIDTH;
-        var width = r.duration * WEEK_WIDTH;
+        var clipped = clipRangeToView(r.start, r.duration);
+        var left = clipped.start * WEEK_WIDTH;
+        var width = (clipped.end - clipped.start) * WEEK_WIDTH;
+        var truncClass = clipped.truncatedLeft ? ' bar-truncated-left' : '';
+        var leftHandle = clipped.truncatedLeft ? '' : '<span class="handle left" data-id="' + r.id + '" data-mode="resize-left"></span>';
         html += '<div class="cell track-cell' + rowClass + '" data-track-for="' + r.id + '" data-project="' + escapeAttr(entryKey) + '" style="grid-column: span ' + TOTAL_WEEKS + '">' +
-          '<div class="bar" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + colorSlot + ')" title="' +
+          '<div class="bar' + truncClass + '" data-id="' + r.id + '" style="left:' + left + 'px; width:' + width + 'px; background: var(--series-' + colorSlot + ')" title="' +
           escapeAttr(barTitle(r)) + '">' +
-          '<span class="handle left" data-id="' + r.id + '" data-mode="resize-left"></span>' +
+          leftHandle +
           '<span class="badge">' + r.allocation + '%</span>' +
           '<span class="handle right" data-id="' + r.id + '" data-mode="resize-right"></span>' +
           '</div>' +
@@ -1239,7 +1302,9 @@
       note.className = 'empty-state';
       note.style.gridColumn = '1 / -1';
       if (resources.length) {
-        note.textContent = 'No resources match the current filter.';
+        note.textContent = (isFiltered || isProjectFiltered)
+          ? 'No resources match the current filter.'
+          : 'Nothing scheduled in this date range.';
       } else {
         var emptyMsg = document.createElement('div');
         emptyMsg.textContent = 'No resources yet.';
@@ -1263,7 +1328,7 @@
   }
 
   function barTitle(r) {
-    return r.name + ' — ' + r.project + ': ' + rangeLabelShort(r.start, r.start + r.duration) + ' (' + r.duration + 'w, ' + r.allocation + '%)';
+    return r.name + ' — ' + r.project + ': ' + rangeLabelShortAnchor(r.start, r.start + r.duration) + ' (' + r.duration + 'w, ' + r.allocation + '%)';
   }
 
   // ---- Add resource ----
@@ -1299,12 +1364,13 @@
     var allocation = Number(allocInput.value);
     if (!name) return;
     if (!isFinite(allocation) || allocation < 0) allocation = 0;
+    var addOffset = viewOffsetWeeks();
     var sameProject = resources.filter(function (r) { return r.project === project; });
-    var start = sameProject.length
-      ? Math.max.apply(null, sameProject.map(function (r) { return r.start + r.duration; }))
+    var startView = sameProject.length
+      ? Math.max.apply(null, sameProject.map(function (r) { return r.start + r.duration; })) - addOffset
       : todayWeekIndex();
-    start = clamp(start, 0, TOTAL_WEEKS - DEFAULT_DURATION);
-    addResourceInternal(name, allocation, start, DEFAULT_DURATION, project);
+    startView = clamp(startView, 0, TOTAL_WEEKS - DEFAULT_DURATION);
+    addResourceInternal(name, allocation, startView + addOffset, DEFAULT_DURATION, project);
     closeAddModal();
     render();
     scheduleSave();
@@ -1498,7 +1564,9 @@
 
     var mode = handle ? handle.dataset.mode : 'move';
     var startX = e.clientX;
-    var origStart = resource.start;
+    var dragOffset = viewOffsetWeeks(); // constant for the duration of this drag
+    var origStart = resource.start; // anchor-relative (stored)
+    var origStartView = origStart - dragOffset; // view-relative (on-screen column)
     var origDuration = resource.duration;
     var origGroupKey = entryGroupKey(resource);
     var hoverGroupKey = origGroupKey;
@@ -1531,16 +1599,18 @@
     }
 
     function applyVisual() {
-      var left = resource.start * WEEK_WIDTH;
-      var width = resource.duration * WEEK_WIDTH;
+      var liveClipped = clipRangeToView(resource.start, resource.duration);
+      var left = (liveClipped ? liveClipped.start : (resource.start - dragOffset)) * WEEK_WIDTH;
+      var width = (liveClipped ? (liveClipped.end - liveClipped.start) : resource.duration) * WEEK_WIDTH;
       barEl.style.left = left + 'px';
       barEl.style.width = width + 'px';
+      barEl.classList.toggle('bar-truncated-left', !!(liveClipped && liveClipped.truncatedLeft));
       if (badge) badge.style.display = '';
 
       updateProjectBarVisual();
       renderPanel();
 
-      dragTip.textContent = rangeLabelShort(resource.start, resource.start + resource.duration) + ' (' + resource.duration + 'w)' +
+      dragTip.textContent = rangeLabelShortAnchor(resource.start, resource.start + resource.duration) + ' (' + resource.duration + 'w)' +
         (hoverGroupKey !== origGroupKey ? ' → ' + hoverGroupKey : '');
       dragTip.style.left = e.clientX + 'px';
       dragTip.style.top = e.clientY + 'px';
@@ -1549,17 +1619,19 @@
     function updateProjectBarVisual() {
       var group = dragGroups[groupIndex];
       if (!group) return;
-      var range = projectRangeFor(group.resources);
+      var stillVisible = group.resources.filter(function (r) { return !!clipRangeToView(r.start, r.duration); });
+      var range = projectRangeFor(stillVisible);
       var esc = (window.CSS && CSS.escape) ? CSS.escape(group.name) : group.name.replace(/"/g, '\\"');
       var groupTrackEl = grid.querySelector('.project-track[data-project="' + esc + '"]');
       if (!groupTrackEl) return;
       var pBar = groupTrackEl.querySelector('.project-bar');
-      if (range && pBar) {
-        var pLeft = range.start * WEEK_WIDTH;
-        var pWidth = (range.end - range.start) * WEEK_WIDTH;
+      var clippedRange = range ? clipRangeToView(range.start, range.end - range.start) : null;
+      if (clippedRange && pBar) {
+        var pLeft = clippedRange.start * WEEK_WIDTH;
+        var pWidth = (clippedRange.end - clippedRange.start) * WEEK_WIDTH;
         pBar.style.left = pLeft + 'px';
         pBar.style.width = pWidth + 'px';
-        pBar.title = group.name + ': ' + rangeLabelShort(range.start, range.end) + ' (' + (range.end - range.start) + 'w)';
+        pBar.title = group.name + ': ' + rangeLabelShortAnchor(range.start, range.end) + ' (' + (range.end - range.start) + 'w)';
       }
     }
 
@@ -1567,7 +1639,12 @@
       var dx = ev.clientX - startX;
       var dWeeks = Math.round(dx / WEEK_WIDTH);
       if (mode === 'move') {
-        resource.start = clamp(origStart + dWeeks, 0, TOTAL_WEEKS - resource.duration);
+        // If the bar was already truncated (true start off-screen left), don't let a drag push
+        // it further left than that — its real edge isn't visible/grabbable to aim precisely,
+        // and a plain click-without-moving must not snap the true start forward to column 0.
+        var moveLowerBound = Math.min(0, origStartView);
+        var newStartView0 = clamp(origStartView + dWeeks, moveLowerBound, TOTAL_WEEKS - resource.duration);
+        resource.start = newStartView0 + dragOffset;
 
         var overEl = document.elementFromPoint(ev.clientX, ev.clientY);
         var rowEl = overEl ? overEl.closest('[data-project]') : null;
@@ -1586,11 +1663,11 @@
           setReorderHighlight(null);
         }
       } else if (mode === 'resize-left') {
-        var newStart = clamp(origStart + dWeeks, 0, origStart + origDuration - 1);
-        resource.duration = origDuration + (origStart - newStart);
-        resource.start = newStart;
+        var newStartView = clamp(origStartView + dWeeks, 0, origStartView + origDuration - 1);
+        resource.duration = origDuration + (origStartView - newStartView);
+        resource.start = newStartView + dragOffset;
       } else if (mode === 'resize-right') {
-        var newDuration = clamp(origDuration + dWeeks, 1, TOTAL_WEEKS - origStart);
+        var newDuration = clamp(origDuration + dWeeks, 1, TOTAL_WEEKS - origStartView);
         resource.duration = newDuration;
       }
       e = ev;
@@ -1710,19 +1787,14 @@
     scheduleSave();
   });
 
-  // Changing the start date pans the visible window: resource weeks shift so their
-  // actual calendar dates stay put, rather than jumping to a different week.
+  // Changing the start date only pans the visible window — resource start/duration are stored
+  // relative to the fixed DATA_EPOCH, so their real dates never move. Bars that finish before
+  // the new start are hidden; bars already in progress show only their remaining time (see
+  // clipRangeToView), all handled purely at render time.
   timelineStartInput.addEventListener('change', function () {
     var picked = parseIsoDate(timelineStartInput.value);
     if (!picked) { timelineStartInput.value = isoDateString(timelineStartDate); return; }
-    var newStart = mondayOnOrBefore(picked);
-    var deltaWeeks = Math.round((timelineStartDate - newStart) / (7 * 86400000));
-    if (deltaWeeks !== 0) {
-      resources.forEach(function (r) {
-        r.start = clamp(r.start + deltaWeeks, 0, TOTAL_WEEKS - 1);
-      });
-    }
-    timelineStartDate = newStart;
+    timelineStartDate = mondayOnOrBefore(picked);
     render();
     scheduleSave();
   });
@@ -1753,7 +1825,7 @@
   // ---- Export ----
   exportBtn.addEventListener('click', function () {
     var data = {
-      version: 2, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId,
+      version: 3, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId,
       exportedAt: new Date().toISOString()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1816,9 +1888,10 @@
       var visibleResources = group.resources.filter(function (r) {
         var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
         var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
-        return nameOk && projOk;
+        var inView = !!clipRangeToView(r.start, r.duration);
+        return nameOk && projOk && inView;
       });
-      if ((isFiltered || isProjectFiltered) && !visibleResources.length) return;
+      if (!visibleResources.length) return;
       var colorSlot = (gi % 8) + 1;
       var range = projectRangeFor(visibleResources);
       rows.push({ type: 'group', name: group.name, range: range, colorSlot: colorSlot });
@@ -1934,17 +2007,19 @@
       }
 
       if (row.type === 'group') {
-        if (row.range) {
-          var gx0 = LABEL_WIDTH + row.range.start * WEEK_WIDTH;
-          var gw = (row.range.end - row.range.start) * WEEK_WIDTH;
+        var gClipped = row.range ? clipRangeToView(row.range.start, row.range.end - row.range.start) : null;
+        if (gClipped) {
+          var gx0 = LABEL_WIDTH + gClipped.start * WEEK_WIDTH;
+          var gw = (gClipped.end - gClipped.start) * WEEK_WIDTH;
           ctx.fillStyle = blendHex(color, surface, 0.28);
           ctx.strokeStyle = color;
           roundRectPath(ctx, gx0 + 2, y + h / 2 - 10, Math.max(gw - 4, 1), 20, 6);
           ctx.fill(); ctx.stroke();
         }
       } else {
-        var bx = LABEL_WIDTH + row.r.start * WEEK_WIDTH;
-        var bw = row.r.duration * WEEK_WIDTH;
+        var rClipped = clipRangeToView(row.r.start, row.r.duration);
+        var bx = LABEL_WIDTH + rClipped.start * WEEK_WIDTH;
+        var bw = (rClipped.end - rClipped.start) * WEEK_WIDTH;
         ctx.fillStyle = color;
         roundRectPath(ctx, bx + 3, y + h / 2 - 13, Math.max(bw - 6, 1), 26, 6);
         ctx.fill();
