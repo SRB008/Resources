@@ -179,6 +179,7 @@
     font-size: 14px; cursor: pointer; border-radius: 4px; padding: 2px 6px; line-height: 1;
   }
   .panel-close:hover { color: var(--series-8); background: var(--page-plane); }
+  #panelViewToggle { margin-top: 12px; }
   .panel-filter { margin-top: 12px; }
   .panel-filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
   .panel-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -191,6 +192,11 @@
   .filter-chip.active {
     background: color-mix(in srgb, var(--series-1) 18%, var(--surface-1));
     border-color: var(--series-1); color: var(--series-1); font-weight: 600;
+  }
+  .panel-filter-chips.filter-chips-red .filter-chip:hover { background: color-mix(in srgb, var(--series-8) 10%, var(--page-plane)); }
+  .panel-filter-chips.filter-chips-red .filter-chip.active {
+    background: color-mix(in srgb, var(--series-8) 18%, var(--surface-1));
+    border-color: var(--series-8); color: var(--series-8);
   }
   .panel-summary {
     font-size: 12px; color: var(--text-secondary); margin: 10px 0 14px;
@@ -479,8 +485,12 @@
         </div>
         <button type="button" class="panel-close" id="panelClose" title="Close">✕</button>
       </div>
+      <div class="view-toggle" id="panelViewToggle" role="group" aria-label="Show in panel">
+        <button type="button" class="view-toggle-btn" data-panel-view="project">Projects</button>
+        <button type="button" class="view-toggle-btn" data-panel-view="resource">Resources</button>
+      </div>
       <div class="panel-filter">
-        <div class="panel-filter-label">Filter projects</div>
+        <div class="panel-filter-label" id="panelFilterLabel">Filter projects</div>
         <div class="panel-filter-chips" id="panelFilterChips"></div>
       </div>
       <div class="panel-summary" id="panelSummary"></div>
@@ -559,6 +569,9 @@
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
+  var panelViewToggle = document.getElementById('panelViewToggle');
+  var panelViewToggleBtns = panelViewToggle.querySelectorAll('.view-toggle-btn');
+  var panelFilterLabel = document.getElementById('panelFilterLabel');
   var panelSummary = document.getElementById('panelSummary');
   var panelList = document.getElementById('panelList');
   var panelClose = document.getElementById('panelClose');
@@ -581,7 +594,9 @@
   var nextId = 1;
   var timelineStartDate = mondayOnOrBefore(new Date()); // fixed calendar anchor for week 0; persisted with the file
   var selectedWeeks = []; // array of selected week indices, shown together in the side panel
+  var panelViewMode = 'resource'; // 'resource' = list resources filtered by project; 'project' = list projects filtered by resource
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
+  var panelResourceFilter = null; // null = all resources; otherwise an array of selected resource names (panel's "Filter resources", project-view only)
   var collapsedGroups = { project: {}, resource: {} }; // per-view: group name -> true when its rows are hidden
   var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
   var projectFilter = null; // null = all projects; otherwise an array of selected project names (chart-wide)
@@ -939,16 +954,34 @@
   }
 
   function renderPanelFilterChips() {
-    var groups = projectGroups();
-    var isAll = panelFilter === null;
-    var isNone = !isAll && panelFilter.length === 0;
-    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All projects</button>';
+    var isResourceView = panelViewMode === 'resource';
+    panelFilterLabel.textContent = isResourceView ? 'Filter projects' : 'Filter resources';
+    panelFilterChips.classList.toggle('filter-chips-red', !isResourceView);
+
+    var names = isResourceView ? projectGroups().map(function (g) { return g.name; }) : uniqueResourceNames();
+    var filterState = isResourceView ? panelFilter : panelResourceFilter;
+    var isAll = filterState === null;
+    var isNone = !isAll && filterState.length === 0;
+    var dataAttr = isResourceView ? 'data-filter-project' : 'data-filter-resource';
+    var allLabel = isResourceView ? 'All projects' : 'All resources';
+    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">' + allLabel + '</button>';
     html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
-    html += groups.map(function (g) {
-      var checked = isAll || panelFilter.indexOf(g.name) !== -1;
-      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-project="' + escapeAttr(g.name) + '">' + escapeAttr(g.name) + '</button>';
+    html += names.map(function (n) {
+      var checked = isAll || filterState.indexOf(n) !== -1;
+      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" ' + dataAttr + '="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
     }).join('');
     panelFilterChips.innerHTML = html;
+  }
+
+  function panelRowHtml(name, subtitle, rangeText, total) {
+    return '<div class="panel-row">' +
+      '<div class="panel-row-main">' +
+        '<div class="panel-row-name">' + escapeAttr(name) + '</div>' +
+        '<div class="panel-row-project">' + escapeAttr(subtitle) + '</div>' +
+        (rangeText ? '<div class="panel-row-range">' + rangeText + '</div>' : '') +
+      '</div>' +
+      '<div class="panel-row-alloc">' + total + '%</div>' +
+    '</div>';
   }
 
   function renderResourceFilterChips() {
@@ -981,6 +1014,9 @@
 
   function renderPanel() {
     renderPanelFilterChips();
+    panelViewToggleBtns.forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.panelView === panelViewMode);
+    });
 
     if (!selectedWeeks.length) {
       sidePanel.classList.remove('open');
@@ -989,52 +1025,89 @@
     sidePanel.classList.add('open');
     panelDate.textContent = selectedWeeksLabel();
 
-    var allGroupNames = projectGroups().map(function (g) { return g.name; });
-    var isAll = panelFilter === null;
-    var active = resources.filter(function (r) {
-      var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
-      var inFilter = isAll || panelFilter.indexOf(r.project || 'Untitled Project') !== -1;
-      return inRange && inFilter;
-    });
-    var total = active.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
-    var projectsInvolved = {};
-    active.forEach(function (r) { projectsInvolved[r.project || 'Untitled Project'] = true; });
-    var projectCount = Object.keys(projectsInvolved).length;
+    var isResourceView = panelViewMode === 'resource';
 
-    var byName = {};
-    var nameOrder = [];
-    active.forEach(function (r) {
-      var key = (r.name || 'Untitled').trim() || 'Untitled';
-      if (!byName[key]) { byName[key] = { name: key, total: 0, entries: [] }; nameOrder.push(key); }
-      byName[key].total += Number(r.allocation) || 0;
-      byName[key].entries.push(r);
-    });
-    var peopleCount = nameOrder.length;
-
-    var filterNote = isAll ? '' : ' · filtered to ' + panelFilter.length + ' of ' + allGroupNames.length + ' projects';
-    panelSummary.textContent = peopleCount
-      ? peopleCount + ' resource' + (peopleCount === 1 ? '' : 's') + ' · ' + total + '% total allocation' +
-        (projectCount > 1 ? ' · ' + projectCount + ' projects' : '') + filterNote
-      : 'No resources allocated for the selected week(s)' + filterNote;
-
-    panelList.innerHTML = nameOrder.map(function (key) {
-      var g = byName[key];
-      var projectNames = [];
-      g.entries.forEach(function (e) {
-        var p = e.project || 'Untitled Project';
-        if (projectNames.indexOf(p) === -1) projectNames.push(p);
+    if (isResourceView) {
+      var allProjectNames = projectGroups().map(function (g) { return g.name; });
+      var isAll = panelFilter === null;
+      var active = resources.filter(function (r) {
+        var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
+        var inFilter = isAll || panelFilter.indexOf(r.project || 'Untitled Project') !== -1;
+        return inRange && inFilter;
       });
-      var subtitle = projectNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
-      var rangeText = g.entries.length === 1 ? rangeLabelShort(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
-      return '<div class="panel-row">' +
-        '<div class="panel-row-main">' +
-          '<div class="panel-row-name">' + escapeAttr(g.name) + '</div>' +
-          '<div class="panel-row-project">' + escapeAttr(subtitle) + '</div>' +
-          (rangeText ? '<div class="panel-row-range">' + rangeText + '</div>' : '') +
-        '</div>' +
-        '<div class="panel-row-alloc">' + g.total + '%</div>' +
-      '</div>';
-    }).join('');
+      var total = active.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
+      var projectsInvolved = {};
+      active.forEach(function (r) { projectsInvolved[r.project || 'Untitled Project'] = true; });
+      var projectCount = Object.keys(projectsInvolved).length;
+
+      var byName = {};
+      var nameOrder = [];
+      active.forEach(function (r) {
+        var key = (r.name || 'Untitled').trim() || 'Untitled';
+        if (!byName[key]) { byName[key] = { name: key, total: 0, entries: [] }; nameOrder.push(key); }
+        byName[key].total += Number(r.allocation) || 0;
+        byName[key].entries.push(r);
+      });
+      var peopleCount = nameOrder.length;
+
+      var filterNote = isAll ? '' : ' · filtered to ' + panelFilter.length + ' of ' + allProjectNames.length + ' projects';
+      panelSummary.textContent = peopleCount
+        ? peopleCount + ' resource' + (peopleCount === 1 ? '' : 's') + ' · ' + total + '% total allocation' +
+          (projectCount > 1 ? ' · ' + projectCount + ' projects' : '') + filterNote
+        : 'No resources allocated for the selected week(s)' + filterNote;
+
+      panelList.innerHTML = nameOrder.map(function (key) {
+        var g = byName[key];
+        var projectNames = [];
+        g.entries.forEach(function (e) {
+          var p = e.project || 'Untitled Project';
+          if (projectNames.indexOf(p) === -1) projectNames.push(p);
+        });
+        var subtitle = projectNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
+        var rangeText = g.entries.length === 1 ? rangeLabelShort(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
+        return panelRowHtml(g.name, subtitle, rangeText, g.total);
+      }).join('');
+    } else {
+      var allResNames = uniqueResourceNames();
+      var isAllRes = panelResourceFilter === null;
+      var activeR = resources.filter(function (r) {
+        var inRange = selectedWeeks.some(function (w) { return w >= r.start && w < r.start + r.duration; });
+        var inFilter = isAllRes || panelResourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
+        return inRange && inFilter;
+      });
+      var totalR = activeR.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
+      var resourcesInvolved = {};
+      activeR.forEach(function (r) { resourcesInvolved[(r.name || 'Untitled').trim() || 'Untitled'] = true; });
+      var resourceCount = Object.keys(resourcesInvolved).length;
+
+      var byProject = {};
+      var projOrder = [];
+      activeR.forEach(function (r) {
+        var key = r.project || 'Untitled Project';
+        if (!byProject[key]) { byProject[key] = { name: key, total: 0, entries: [] }; projOrder.push(key); }
+        byProject[key].total += Number(r.allocation) || 0;
+        byProject[key].entries.push(r);
+      });
+      var projectListCount = projOrder.length;
+
+      var filterNoteR = isAllRes ? '' : ' · filtered to ' + panelResourceFilter.length + ' of ' + allResNames.length + ' resources';
+      panelSummary.textContent = projectListCount
+        ? projectListCount + ' project' + (projectListCount === 1 ? '' : 's') + ' · ' + totalR + '% total allocation' +
+          (resourceCount > 1 ? ' · ' + resourceCount + ' resources' : '') + filterNoteR
+        : 'No projects allocated for the selected week(s)' + filterNoteR;
+
+      panelList.innerHTML = projOrder.map(function (key) {
+        var g = byProject[key];
+        var resNames = [];
+        g.entries.forEach(function (e) {
+          var n = (e.name || 'Untitled').trim() || 'Untitled';
+          if (resNames.indexOf(n) === -1) resNames.push(n);
+        });
+        var subtitle = resNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
+        var rangeText = g.entries.length === 1 ? rangeLabelShort(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
+        return panelRowHtml(g.name, subtitle, rangeText, g.total);
+      }).join('');
+    }
   }
 
   function render() {
@@ -1263,8 +1336,8 @@
     var weekCell = e.target.closest('.week-cell');
     if (weekCell) {
       var idx = Number(weekCell.dataset.weekIndex);
-      var pos = selectedWeeks.indexOf(idx);
-      if (pos === -1) selectedWeeks.push(idx); else selectedWeeks.splice(pos, 1);
+      var alreadySelected = selectedWeeks.length === 1 && selectedWeeks[0] === idx;
+      selectedWeeks = alreadySelected ? [] : [idx];
       render();
     }
   });
@@ -1277,18 +1350,40 @@
   panelFilterChips.addEventListener('click', function (e) {
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
-    var allNames = projectGroups().map(function (g) { return g.name; });
-    if (chip.dataset.filterAll) {
-      panelFilter = null;
-    } else if (chip.dataset.filterNone) {
-      panelFilter = [];
+    if (panelViewMode === 'resource') {
+      var allNames = projectGroups().map(function (g) { return g.name; });
+      if (chip.dataset.filterAll) {
+        panelFilter = null;
+      } else if (chip.dataset.filterNone) {
+        panelFilter = [];
+      } else {
+        var name = chip.dataset.filterProject;
+        var current = (panelFilter === null) ? allNames.slice() : panelFilter.slice();
+        var idx = current.indexOf(name);
+        if (idx === -1) current.push(name); else current.splice(idx, 1);
+        panelFilter = (current.length === allNames.length) ? null : current;
+      }
     } else {
-      var name = chip.dataset.filterProject;
-      var current = (panelFilter === null) ? allNames.slice() : panelFilter.slice();
-      var idx = current.indexOf(name);
-      if (idx === -1) current.push(name); else current.splice(idx, 1);
-      panelFilter = (current.length === allNames.length) ? null : current;
+      var allResNames = uniqueResourceNames();
+      if (chip.dataset.filterAll) {
+        panelResourceFilter = null;
+      } else if (chip.dataset.filterNone) {
+        panelResourceFilter = [];
+      } else {
+        var rname = chip.dataset.filterResource;
+        var currentR = (panelResourceFilter === null) ? allResNames.slice() : panelResourceFilter.slice();
+        var idxR = currentR.indexOf(rname);
+        if (idxR === -1) currentR.push(rname); else currentR.splice(idxR, 1);
+        panelResourceFilter = (currentR.length === allResNames.length) ? null : currentR;
+      }
     }
+    renderPanel();
+  });
+
+  panelViewToggle.addEventListener('click', function (e) {
+    var btn = e.target.closest('.view-toggle-btn');
+    if (!btn || btn.dataset.panelView === panelViewMode) return;
+    panelViewMode = btn.dataset.panelView;
     renderPanel();
   });
 
