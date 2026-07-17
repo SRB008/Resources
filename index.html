@@ -1004,7 +1004,7 @@
 
   function gridBackground() {
     var todayLeft = (todayWeekIndex() + todayFractionWithinWeek()) * WEEK_WIDTH;
-    var images = ['linear-gradient(var(--today-marker), var(--today-marker))'];
+    var images = ['repeating-linear-gradient(to bottom, var(--today-marker) 0, var(--today-marker) 2px, transparent 2px, transparent 6px)'];
     var sizes = ['2px 100%'];
     var positions = [(LABEL_WIDTH + todayLeft) + 'px 0'];
     var repeats = ['no-repeat'];
