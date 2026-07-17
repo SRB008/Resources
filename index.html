@@ -120,6 +120,28 @@
   }
   .add-form button[type="submit"]:hover { filter: brightness(1.08); }
 
+  .skills-modal { width: 380px; }
+  .skills-new-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .skills-new-row input {
+    flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 7px 9px;
+    border: 1px solid var(--baseline); border-radius: 6px;
+    background: var(--page-plane); color: var(--text-primary);
+  }
+  .skills-resource-list {
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 320px; overflow-y: auto;
+  }
+  .skills-resource-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .skills-resource-name {
+    font-size: 13px; font-weight: 600; flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .skill-select {
+    font: inherit; font-size: 12px; padding: 5px 7px; flex: none; max-width: 160px;
+    border: 1px solid var(--baseline); border-radius: 6px;
+    background: var(--surface-1); color: var(--text-primary);
+  }
+
   .add-entry-btn {
     flex: none; width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
@@ -240,6 +262,11 @@
   #resourceFilterChips .filter-chip.active {
     background: color-mix(in srgb, var(--series-8) 18%, var(--surface-1));
     border-color: var(--series-8); color: var(--series-8);
+  }
+  #skillsFilterChips .filter-chip:hover { background: color-mix(in srgb, var(--series-2) 10%, var(--page-plane)); }
+  #skillsFilterChips .filter-chip.active {
+    background: color-mix(in srgb, var(--series-2) 18%, var(--surface-1));
+    border-color: var(--series-2); color: var(--series-2);
   }
 
   .gantt-card {
@@ -440,6 +467,7 @@
             <button type="button" class="view-toggle-btn" data-view="project">Projects</button>
             <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
           </div>
+          <button type="button" class="ghost-btn" id="manageSkillsBtn">Assign Skill</button>
           <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
           <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort project or resource rows alphabethical, then by date">Sort View</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File…</button>
@@ -461,6 +489,10 @@
 
           <div class="resource-filter" id="projectFilterBar" style="display:none">
             <div class="resource-filter-chips" id="projectFilterChips"></div>
+          </div>
+
+          <div class="resource-filter" id="skillsFilterBar" style="display:none">
+            <div class="resource-filter-chips" id="skillsFilterChips"></div>
           </div>
         </div>
 
@@ -533,6 +565,20 @@
       </form>
     </div>
   </div>
+
+  <div class="modal-overlay" id="skillsModalOverlay" style="display:none">
+    <div class="modal skills-modal">
+      <div class="modal-header">
+        <div class="modal-title">Manage Skills</div>
+        <button type="button" class="panel-close" id="skillsModalClose" title="Close">✕</button>
+      </div>
+      <div class="skills-new-row">
+        <input id="newSkillInput" type="text" placeholder="Add a new skill…" maxlength="40" />
+        <button type="button" class="ghost-btn" id="addSkillBtn">Add</button>
+      </div>
+      <div class="skills-resource-list" id="skillsResourceList"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -576,6 +622,12 @@
   var timelineStartInput = document.getElementById('timelineStartInput');
   var densityToggleBtn = document.getElementById('densityToggleBtn');
   var sortAzBtn = document.getElementById('sortAzBtn');
+  var manageSkillsBtn = document.getElementById('manageSkillsBtn');
+  var skillsModalOverlay = document.getElementById('skillsModalOverlay');
+  var skillsModalClose = document.getElementById('skillsModalClose');
+  var newSkillInput = document.getElementById('newSkillInput');
+  var addSkillBtn = document.getElementById('addSkillBtn');
+  var skillsResourceList = document.getElementById('skillsResourceList');
   var saveStatus = document.getElementById('saveStatus');
   var sidePanel = document.getElementById('sidePanel');
   var panelDate = document.getElementById('panelDate');
@@ -591,6 +643,8 @@
   var resourceFilterChips = document.getElementById('resourceFilterChips');
   var projectFilterBar = document.getElementById('projectFilterBar');
   var projectFilterChips = document.getElementById('projectFilterChips');
+  var skillsFilterBar = document.getElementById('skillsFilterBar');
+  var skillsFilterChips = document.getElementById('skillsFilterChips');
   var editableArea = document.getElementById('editableArea');
   var lockOverlay = document.getElementById('lockOverlay');
   var gateOpenBtn = document.getElementById('gateOpenBtn');
@@ -610,6 +664,9 @@
   var collapsedGroups = { project: {}, resource: {} }; // per-view: group name -> true when its rows are hidden
   var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
   var projectFilter = null; // null = all projects; otherwise an array of selected project names (chart-wide)
+  var skillsFilter = null; // null = all skills; otherwise an array of selected skill tags (chart-wide)
+  var skillsCatalog = []; // ordered list of skill tags available to assign, managed via the Skills popup
+  var resourceSkills = {}; // resource name -> assigned skill tag, shared across every assignment for that person
   var viewMode = 'project'; // 'project' groups the chart by project, 'resource' groups it by resource
   try {
     if (localStorage.getItem('gantt-view-mode') === 'resource') viewMode = 'resource';
@@ -772,8 +829,12 @@
   }
 
   function keyForProject(r) { return r.project || 'Untitled Project'; }
-  function keyForResource(r) { return (r.name || 'Untitled').trim() || 'Untitled'; }
+  function normalizeResourceName(name) { return (name || 'Untitled').trim() || 'Untitled'; }
+  function keyForResource(r) { return normalizeResourceName(r.name); }
   function entryGroupKey(r) { return viewMode === 'resource' ? keyForResource(r) : keyForProject(r); }
+  // Skill is a property of the person (keyed by resource name), not of a single assignment,
+  // so it's shared across every entry for that name rather than stored per-row.
+  function skillForResource(r) { return resourceSkills[keyForResource(r)] || ''; }
 
   function groupBy(keyFn) {
     var order = [];
@@ -799,6 +860,8 @@
     });
     return names;
   }
+
+  function uniqueSkills() { return skillsCatalog.slice(); }
 
   // Reorders the flat resources array so `movedId` sits directly before/after `targetId`.
   // Row order within a project is just array order, so this is how drag-to-reorder works.
@@ -854,7 +917,7 @@
   function currentStateData() {
     // version 3: resource start/duration are stored relative to the fixed DATA_EPOCH, not
     // relative to timelineStart, so panning the view never rewrites saved dates.
-    return { version: 3, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId };
+    return { version: 3, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId, skillsCatalog: skillsCatalog, resourceSkills: resourceSkills };
   }
 
   function persistState() {
@@ -984,6 +1047,8 @@
       };
     });
     nextId = Number(data.nextId) || (resources.reduce(function (m, r) { return Math.max(m, r.id); }, 0) + 1);
+    skillsCatalog = Array.isArray(data.skillsCatalog) ? data.skillsCatalog.map(String) : [];
+    resourceSkills = (data.resourceSkills && typeof data.resourceSkills === 'object') ? data.resourceSkills : {};
     return true;
   }
 
@@ -1089,6 +1154,20 @@
       return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-project="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
     }).join('');
     projectFilterChips.innerHTML = html;
+  }
+
+  function renderSkillsFilterChips() {
+    var names = uniqueSkills();
+    skillsFilterBar.style.display = names.length ? '' : 'none';
+    var isAll = skillsFilter === null;
+    var isNone = !isAll && skillsFilter.length === 0;
+    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All skills</button>';
+    html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
+    html += names.map(function (n) {
+      var checked = isAll || skillsFilter.indexOf(n) !== -1;
+      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-skills="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
+    }).join('');
+    skillsFilterChips.innerHTML = html;
   }
 
   function renderPanel() {
@@ -1202,7 +1281,8 @@
     timelineStartInput.value = isoDateString(timelineStartDate);
     renderResourceFilterChips();
     renderProjectFilterChips();
-    filtersBlock.style.display = (resourceFilterBar.style.display !== 'none' || projectFilterBar.style.display !== 'none') ? '' : 'none';
+    renderSkillsFilterChips();
+    filtersBlock.style.display = (resourceFilterBar.style.display !== 'none' || projectFilterBar.style.display !== 'none' || skillsFilterBar.style.display !== 'none') ? '' : 'none';
 
     grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
     colResizeHandle.style.left = LABEL_WIDTH + 'px';
@@ -1236,14 +1316,16 @@
     var groupNoun = viewMode === 'resource' ? 'resource' : 'project';
     var isFiltered = resourceFilter !== null;
     var isProjectFiltered = projectFilter !== null;
+    var isSkillsFiltered = skillsFilter !== null;
     var rowCounter = 0;
     var renderedAny = false;
     groups.forEach(function (group, gi) {
       var visibleResources = group.resources.filter(function (r) {
         var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
         var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
+        var skillOk = !isSkillsFiltered || skillsFilter.indexOf(skillForResource(r)) !== -1;
         var inView = !!clipRangeToView(r.start, r.duration);
-        return nameOk && projOk && inView;
+        return nameOk && projOk && skillOk && inView;
       });
       if (!visibleResources.length) return;
       renderedAny = true;
@@ -1383,7 +1465,68 @@
     if (e.target === addModalOverlay) closeAddModal();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && addModalOverlay.style.display !== 'none') closeAddModal();
+    if (e.key !== 'Escape') return;
+    if (addModalOverlay.style.display !== 'none') closeAddModal();
+    if (skillsModalOverlay.style.display !== 'none') closeSkillsModal();
+  });
+
+  // ---- Manage Skills modal ----
+  function renderSkillsModal() {
+    var names = uniqueResourceNames();
+    var catalog = skillsCatalog;
+    if (!names.length) {
+      skillsResourceList.innerHTML = '<div class="empty-state">No resources yet.</div>';
+      return;
+    }
+    skillsResourceList.innerHTML = names.map(function (name) {
+      var current = resourceSkills[name] || '';
+      var options = '<option value="">— no skill —</option>' + catalog.map(function (s) {
+        return '<option value="' + escapeAttr(s) + '"' + (s === current ? ' selected' : '') + '>' + escapeAttr(s) + '</option>';
+      }).join('');
+      return '<div class="skills-resource-row">' +
+        '<span class="skills-resource-name">' + escapeAttr(name) + '</span>' +
+        '<select class="skill-select" data-name="' + escapeAttr(name) + '">' + options + '</select>' +
+        '</div>';
+    }).join('');
+  }
+
+  function openSkillsModal() {
+    renderSkillsModal();
+    newSkillInput.value = '';
+    skillsModalOverlay.style.display = 'flex';
+  }
+
+  function closeSkillsModal() {
+    skillsModalOverlay.style.display = 'none';
+  }
+
+  manageSkillsBtn.addEventListener('click', openSkillsModal);
+  skillsModalClose.addEventListener('click', closeSkillsModal);
+  skillsModalOverlay.addEventListener('click', function (e) {
+    if (e.target === skillsModalOverlay) closeSkillsModal();
+  });
+
+  function addNewSkill() {
+    var val = newSkillInput.value.trim();
+    if (!val || skillsCatalog.indexOf(val) !== -1) { newSkillInput.value = ''; return; }
+    skillsCatalog.push(val);
+    newSkillInput.value = '';
+    renderSkillsModal();
+    render();
+    scheduleSave();
+  }
+  addSkillBtn.addEventListener('click', addNewSkill);
+  newSkillInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addNewSkill(); }
+  });
+
+  skillsResourceList.addEventListener('change', function (e) {
+    var sel = e.target.closest('.skill-select');
+    if (!sel) return;
+    var name = sel.dataset.name;
+    if (sel.value) resourceSkills[name] = sel.value; else delete resourceSkills[name];
+    render();
+    scheduleSave();
   });
 
   addForm.addEventListener('submit', function (e) {
@@ -1518,6 +1661,24 @@
     render();
   });
 
+  skillsFilterChips.addEventListener('click', function (e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    var allNames = uniqueSkills();
+    if (chip.dataset.filterAll) {
+      skillsFilter = null;
+    } else if (chip.dataset.filterNone) {
+      skillsFilter = [];
+    } else {
+      var name = chip.dataset.filterSkills;
+      var current = (skillsFilter === null) ? allNames.slice() : skillsFilter.slice();
+      var idx = current.indexOf(name);
+      if (idx === -1) current.push(name); else current.splice(idx, 1);
+      skillsFilter = (current.length === allNames.length) ? null : current;
+    }
+    render();
+  });
+
   grid.addEventListener('input', function (e) {
     var el = e.target;
     if (el.dataset && el.dataset.role === 'name') {
@@ -1562,6 +1723,10 @@
             r.project = newName;
           }
         });
+        if (viewMode === 'resource' && Object.prototype.hasOwnProperty.call(resourceSkills, oldName)) {
+          resourceSkills[newName] = resourceSkills[oldName];
+          delete resourceSkills[oldName];
+        }
       }
       render();
       scheduleSave();
@@ -1858,6 +2023,7 @@
   exportBtn.addEventListener('click', function () {
     var data = {
       version: 3, unit: 'week', timelineStart: isoDateString(timelineStartDate), resources: resources, nextId: nextId,
+      skillsCatalog: skillsCatalog, resourceSkills: resourceSkills,
       exportedAt: new Date().toISOString()
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1915,13 +2081,15 @@
     var groups = displayGroups();
     var isFiltered = resourceFilter !== null;
     var isProjectFiltered = projectFilter !== null;
+    var isSkillsFiltered = skillsFilter !== null;
     var rows = [];
     groups.forEach(function (group, gi) {
       var visibleResources = group.resources.filter(function (r) {
         var nameOk = !isFiltered || resourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
         var projOk = !isProjectFiltered || projectFilter.indexOf(r.project || 'Untitled Project') !== -1;
+        var skillOk = !isSkillsFiltered || skillsFilter.indexOf(skillForResource(r)) !== -1;
         var inView = !!clipRangeToView(r.start, r.duration);
-        return nameOk && projOk && inView;
+        return nameOk && projOk && skillOk && inView;
       });
       if (!visibleResources.length) return;
       var colorSlot = (gi % 8) + 1;
