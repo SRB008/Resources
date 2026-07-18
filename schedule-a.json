@@ -1,0 +1,285 @@
+{
+  "version": 3,
+  "unit": "week",
+  "timelineStart": "2026-06-29",
+  "resources": [
+    {
+      "id": 27,
+      "name": "Adeshina",
+      "project": "D365",
+      "allocation": 100,
+      "start": 1383,
+      "duration": 17
+    },
+    {
+      "id": 26,
+      "name": "Anjee",
+      "project": "D365",
+      "allocation": 100,
+      "start": 1383,
+      "duration": 17
+    },
+    {
+      "id": 2,
+      "name": "Billie",
+      "project": "In House Credit",
+      "allocation": 75,
+      "start": 1385,
+      "duration": 1
+    },
+    {
+      "id": 3,
+      "name": "Billie",
+      "project": "Klarna",
+      "allocation": 75,
+      "start": 1386,
+      "duration": 2
+    },
+    {
+      "id": 4,
+      "name": "Billie",
+      "project": "Delivery from Vault",
+      "allocation": 50,
+      "start": 1387,
+      "duration": 2
+    },
+    {
+      "id": 31,
+      "name": "Billie",
+      "project": "Website Comms Framework",
+      "allocation": 50,
+      "start": 1387,
+      "duration": 2
+    },
+    {
+      "id": 15,
+      "name": "Brian",
+      "project": "Star Trek",
+      "allocation": 75,
+      "start": 1384,
+      "duration": 1
+    },
+    {
+      "id": 16,
+      "name": "Brian",
+      "project": "Video on News Page",
+      "allocation": 50,
+      "start": 1385,
+      "duration": 2
+    },
+    {
+      "id": 32,
+      "name": "Brian",
+      "project": "Tooth Fairy Letter",
+      "allocation": 25,
+      "start": 1386,
+      "duration": 1
+    },
+    {
+      "id": 19,
+      "name": "Brian",
+      "project": "CRO",
+      "allocation": 100,
+      "start": 1387,
+      "duration": 2
+    },
+    {
+      "id": 29,
+      "name": "Brian",
+      "project": "Star Trek",
+      "allocation": 100,
+      "start": 1390,
+      "duration": 1
+    },
+    {
+      "id": 30,
+      "name": "Brian",
+      "project": "Cluedo",
+      "allocation": 50,
+      "start": 1395,
+      "duration": 1
+    },
+    {
+      "id": 20,
+      "name": "Cass",
+      "project": "Self Serve Address",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 5
+    },
+    {
+      "id": 24,
+      "name": "Gareth",
+      "project": "D365",
+      "allocation": 100,
+      "start": 1383,
+      "duration": 17
+    },
+    {
+      "id": 10,
+      "name": "Grant",
+      "project": "Self Serve Address",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 5
+    },
+    {
+      "id": 14,
+      "name": "Josh",
+      "project": "SSQP",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 16
+    },
+    {
+      "id": 13,
+      "name": "Konrad",
+      "project": "BAU",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 16
+    },
+    {
+      "id": 18,
+      "name": "Lewys",
+      "project": "Physical Redemption",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 5
+    },
+    {
+      "id": 7,
+      "name": "Marcin",
+      "project": "Google Merchant API",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 1
+    },
+    {
+      "id": 8,
+      "name": "Marcin",
+      "project": "Single Session (KPMG)",
+      "allocation": 100,
+      "start": 1385,
+      "duration": 2
+    },
+    {
+      "id": 9,
+      "name": "Marcin",
+      "project": "Annual Leave",
+      "allocation": 100,
+      "start": 1387,
+      "duration": 2
+    },
+    {
+      "id": 6,
+      "name": "Matthew",
+      "project": "PAMP",
+      "allocation": 75,
+      "start": 1384,
+      "duration": 5
+    },
+    {
+      "id": 23,
+      "name": "Niall",
+      "project": "D365",
+      "allocation": 100,
+      "start": 1383,
+      "duration": 17
+    },
+    {
+      "id": 25,
+      "name": "Owen",
+      "project": "D365",
+      "allocation": 100,
+      "start": 1383,
+      "duration": 17
+    },
+    {
+      "id": 21,
+      "name": "Pawel",
+      "project": "BAU",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 1
+    },
+    {
+      "id": 22,
+      "name": "Pawel",
+      "project": "RME",
+      "allocation": 100,
+      "start": 1385,
+      "duration": 4
+    },
+    {
+      "id": 1,
+      "name": "Ryan",
+      "project": "Variant Promise Date",
+      "allocation": 75,
+      "start": 1384,
+      "duration": 3
+    },
+    {
+      "id": 5,
+      "name": "Ryan",
+      "project": "Delivery From Vault",
+      "allocation": 75,
+      "start": 1387,
+      "duration": 2
+    },
+    {
+      "id": 33,
+      "name": "Testers",
+      "project": "Customer Order Mgmt",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 3
+    },
+    {
+      "id": 11,
+      "name": "Wojciech",
+      "project": "Bundles",
+      "allocation": 100,
+      "start": 1384,
+      "duration": 1
+    },
+    {
+      "id": 12,
+      "name": "Wojciech",
+      "project": "Physical Redemption",
+      "allocation": 100,
+      "start": 1385,
+      "duration": 4
+    }
+  ],
+  "nextId": 34,
+  "rolesCatalog": [
+    "Business Analyst",
+    "UX/UI",
+    "CRO",
+    "Front End Developer",
+    "Back End Developer",
+    "Tester",
+    "Functional Consultant"
+  ],
+  "resourceRoles": {
+    "Marcin": "Back End Developer",
+    "Konrad": "Back End Developer",
+    "Pawel": "Front End Developer",
+    "Wojciech": "Back End Developer",
+    "Brian": "Back End Developer",
+    "Adeshina": "Business Analyst",
+    "Anjee": "Business Analyst",
+    "Gareth": "Front End Developer",
+    "Niall": "Back End Developer",
+    "Owen": "Back End Developer",
+    "Billie": "Business Analyst",
+    "Cass": "Front End Developer",
+    "Grant": "Front End Developer",
+    "Josh": "Back End Developer",
+    "Lewys": "Front End Developer",
+    "Matthew": "Back End Developer",
+    "Ryan": "Business Analyst",
+    "Testers": "Tester"
+  }
+}
