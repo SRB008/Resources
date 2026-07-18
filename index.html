@@ -1152,7 +1152,7 @@
     panelFilterLabel.textContent = isResourceView ? 'Filter projects' : 'Filter resources';
     panelFilterChips.classList.toggle('filter-chips-red', !isResourceView);
 
-    var names = isResourceView ? projectGroups().map(function (g) { return g.name; }) : uniqueResourceNames();
+    var names = (isResourceView ? projectGroups().map(function (g) { return g.name; }) : uniqueResourceNames()).sort(function (a, b) { return a.localeCompare(b); });
     var filterState = isResourceView ? panelFilter : panelResourceFilter;
     var isAll = filterState === null;
     var isNone = !isAll && filterState.length === 0;
@@ -1179,7 +1179,7 @@
   }
 
   function renderResourceFilterChips() {
-    var names = uniqueResourceNames();
+    var names = uniqueResourceNames().sort(function (a, b) { return a.localeCompare(b); });
     resourceFilterBar.style.display = names.length ? '' : 'none';
     var isAll = resourceFilter === null;
     var isNone = !isAll && resourceFilter.length === 0;
@@ -1193,7 +1193,7 @@
   }
 
   function renderProjectFilterChips() {
-    var names = projectGroups().map(function (g) { return g.name; });
+    var names = projectGroups().map(function (g) { return g.name; }).sort(function (a, b) { return a.localeCompare(b); });
     projectFilterBar.style.display = names.length ? '' : 'none';
     var isAll = projectFilter === null;
     var isNone = !isAll && projectFilter.length === 0;
@@ -1207,7 +1207,7 @@
   }
 
   function renderRolesFilterChips() {
-    var names = uniqueRoles();
+    var names = uniqueRoles().sort(function (a, b) { return a.localeCompare(b); });
     rolesFilterBar.style.display = names.length ? '' : 'none';
     var isAll = rolesFilter === null;
     var isNone = !isAll && rolesFilter.length === 0;
