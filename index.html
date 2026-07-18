@@ -142,6 +142,32 @@
     background: var(--surface-1); color: var(--text-primary);
   }
 
+  .cleanup-modal { width: 420px; }
+  .cleanup-warning {
+    font-size: 12px; font-weight: 600; color: var(--series-8);
+    background: color-mix(in srgb, var(--series-8) 12%, var(--surface-1));
+    border: 1px solid var(--series-8); border-radius: 6px;
+    padding: 8px 10px; margin-bottom: 14px;
+  }
+  .cleanup-list {
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 320px; overflow-y: auto; margin-bottom: 4px;
+  }
+  .cleanup-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    font-size: 12px; padding: 6px 8px; border-radius: 6px; background: var(--page-plane);
+  }
+  .cleanup-row-main { min-width: 0; }
+  .cleanup-row-project { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cleanup-row-resource { color: var(--text-secondary); margin-top: 1px; }
+  .cleanup-row-date { flex: none; color: var(--text-muted); }
+  #cleanupOkBtn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 6px;
+    border: none; background: var(--series-1); color: #fff; cursor: pointer;
+  }
+  #cleanupOkBtn:hover { filter: brightness(1.08); }
+  #cleanupOkBtn:disabled { opacity: 0.5; cursor: default; filter: none; }
+
   .add-entry-btn {
     flex: none; width: 22px; height: 22px;
     display: flex; align-items: center; justify-content: center;
@@ -471,6 +497,7 @@
           <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort project or resource rows alphabethical, then by date">Sort View</button>
           <button type="button" class="ghost-btn" id="manageRolesBtn">Assign Role</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File</button>
+          <button type="button" class="ghost-btn" id="cleanupBtn">Data Clean Up</button>
           <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
           <button type="button" class="ghost-btn" id="exportBtn">Back Up Data</button>
@@ -579,6 +606,21 @@
       <div class="roles-resource-list" id="rolesResourceList"></div>
     </div>
   </div>
+
+  <div class="modal-overlay" id="cleanupModalOverlay" style="display:none">
+    <div class="modal cleanup-modal">
+      <div class="modal-header">
+        <div class="modal-title">Data Clean Up</div>
+        <button type="button" class="panel-close" id="cleanupModalClose" title="Close">✕</button>
+      </div>
+      <div class="cleanup-warning">Don't forget to make a back up!</div>
+      <div class="cleanup-list" id="cleanupList"></div>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="cleanupCancelBtn">Cancel</button>
+        <button type="button" id="cleanupOkBtn">OK</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -612,6 +654,12 @@
   var addModalClose = document.getElementById('addModalClose');
   var addModalCancel = document.getElementById('addModalCancel');
   var openFileBtn = document.getElementById('openFileBtn');
+  var cleanupBtn = document.getElementById('cleanupBtn');
+  var cleanupModalOverlay = document.getElementById('cleanupModalOverlay');
+  var cleanupModalClose = document.getElementById('cleanupModalClose');
+  var cleanupCancelBtn = document.getElementById('cleanupCancelBtn');
+  var cleanupOkBtn = document.getElementById('cleanupOkBtn');
+  var cleanupList = document.getElementById('cleanupList');
   var saveAsBtn = document.getElementById('saveAsBtn');
   var reconnectBtn = document.getElementById('reconnectBtn');
   var exportBtn = document.getElementById('exportBtn');
@@ -1470,6 +1518,7 @@
     if (e.key !== 'Escape') return;
     if (addModalOverlay.style.display !== 'none') closeAddModal();
     if (rolesModalOverlay.style.display !== 'none') closeRolesModal();
+    if (cleanupModalOverlay.style.display !== 'none') closeCleanupModal();
   });
 
   // ---- Manage Roles modal ----
@@ -1529,6 +1578,65 @@
     if (sel.value) resourceRoles[name] = sel.value; else delete resourceRoles[name];
     render();
     scheduleSave();
+  });
+
+  // ---- Data Clean Up modal ----
+  // An entry has "finished" once its last scheduled week has fully passed relative to
+  // today's real calendar date (not the pannable view start, which never moves finished entries).
+  function entryEndDate(r) {
+    return weekEndDateForAnchor(r.start + r.duration - 1);
+  }
+  function findFinishedEntries() {
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return resources.filter(function (r) { return entryEndDate(r) < today; })
+      .sort(function (a, b) { return entryEndDate(a) - entryEndDate(b); });
+  }
+  var pendingCleanupIds = [];
+
+  function renderCleanupList() {
+    var finished = findFinishedEntries();
+    pendingCleanupIds = finished.map(function (r) { return r.id; });
+    if (!finished.length) {
+      cleanupList.innerHTML = '<div class="empty-state">No finished project or resource tasks to remove.</div>';
+      cleanupOkBtn.disabled = true;
+      return;
+    }
+    cleanupOkBtn.disabled = false;
+    cleanupList.innerHTML = finished.map(function (r) {
+      return '<div class="cleanup-row">' +
+        '<div class="cleanup-row-main">' +
+          '<div class="cleanup-row-project">' + escapeAttr(r.project || 'Untitled Project') + '</div>' +
+          '<div class="cleanup-row-resource">' + escapeAttr(r.name || 'Untitled') + '</div>' +
+        '</div>' +
+        '<div class="cleanup-row-date">' + escapeAttr(fmtLong(entryEndDate(r))) + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function openCleanupModal() {
+    renderCleanupList();
+    cleanupModalOverlay.style.display = 'flex';
+  }
+
+  function closeCleanupModal() {
+    cleanupModalOverlay.style.display = 'none';
+  }
+
+  cleanupBtn.addEventListener('click', openCleanupModal);
+  cleanupModalClose.addEventListener('click', closeCleanupModal);
+  cleanupCancelBtn.addEventListener('click', closeCleanupModal);
+  cleanupModalOverlay.addEventListener('click', function (e) {
+    if (e.target === cleanupModalOverlay) closeCleanupModal();
+  });
+  cleanupOkBtn.addEventListener('click', function () {
+    if (!pendingCleanupIds.length) return;
+    var idSet = pendingCleanupIds;
+    resources = resources.filter(function (r) { return idSet.indexOf(r.id) === -1; });
+    closeCleanupModal();
+    render();
+    scheduleSave();
+    flashStatus('Removed ' + idSet.length + ' finished ' + (idSet.length === 1 ? 'entry' : 'entries'));
   });
 
   addForm.addEventListener('submit', function (e) {
