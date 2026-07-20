@@ -282,6 +282,7 @@
   .panel-row-project { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
   .panel-row-range { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
   .panel-row-alloc { font-size: 13px; font-weight: 700; flex: none; }
+  .panel-row-alloc.over-allocated { color: var(--series-8); }
 
   .editable-area { position: relative; }
   .editable-area.locked .gantt-card { pointer-events: none; opacity: 0.35; filter: saturate(0.3); }
@@ -1205,14 +1206,15 @@
     panelFilterChips.innerHTML = html;
   }
 
-  function panelRowHtml(name, subtitle, rangeText, total) {
+  function panelRowHtml(name, subtitle, rangeText, total, flagOverAllocated) {
+    var overAllocated = flagOverAllocated && total > 100;
     return '<div class="panel-row">' +
       '<div class="panel-row-main">' +
         '<div class="panel-row-name">' + escapeAttr(name) + '</div>' +
         '<div class="panel-row-project">' + escapeAttr(subtitle) + '</div>' +
         (rangeText ? '<div class="panel-row-range">' + rangeText + '</div>' : '') +
       '</div>' +
-      '<div class="panel-row-alloc">' + total + '%</div>' +
+      '<div class="panel-row-alloc' + (overAllocated ? ' over-allocated' : '') + '">' + total + '%</div>' +
     '</div>';
   }
 
@@ -1313,7 +1315,7 @@
         });
         var subtitle = projectNames.join(', ') + (g.entries.length > 1 ? ' · ' + g.entries.length + ' assignments' : '');
         var rangeText = g.entries.length === 1 ? rangeLabelShortAnchor(g.entries[0].start, g.entries[0].start + g.entries[0].duration) : '';
-        return panelRowHtml(g.name, subtitle, rangeText, g.total);
+        return panelRowHtml(g.name, subtitle, rangeText, g.total, true);
       }).join('');
     } else {
       var allResNames = uniqueResourceNames();
