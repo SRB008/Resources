@@ -958,6 +958,14 @@
   }
 
   function projectGroups() { return groupBy(keyForProject); }
+  // Projects whose last assignment ended before the visible timeline's start are excluded —
+  // they'd otherwise appear as filter options for a slice of the chart the user can't see.
+  function visibleProjectGroups() {
+    var offset = viewOffsetWeeks();
+    return projectGroups().filter(function (g) {
+      return g.resources.some(function (r) { return (r.start + r.duration) > offset; });
+    });
+  }
   function resourceGroups() { return groupBy(keyForResource); }
   function displayGroups() { return viewMode === 'resource' ? resourceGroups() : projectGroups(); }
 
@@ -1214,7 +1222,7 @@
     panelFilterLabel.textContent = isResourceView ? 'Filter projects' : 'Filter resources';
     panelFilterChips.classList.toggle('filter-chips-red', !isResourceView);
 
-    var names = (isResourceView ? projectGroups().map(function (g) { return g.name; }) : uniqueResourceNames()).sort(function (a, b) { return a.localeCompare(b); });
+    var names = (isResourceView ? visibleProjectGroups().map(function (g) { return g.name; }) : uniqueResourceNames()).sort(function (a, b) { return a.localeCompare(b); });
     var filterState = isResourceView ? panelFilter : panelResourceFilter;
     var isAll = filterState === null;
     var isNone = !isAll && filterState.length === 0;
@@ -1256,7 +1264,7 @@
   }
 
   function renderProjectFilterChips() {
-    var names = projectGroups().map(function (g) { return g.name; }).sort(function (a, b) { return a.localeCompare(b); });
+    var names = visibleProjectGroups().map(function (g) { return g.name; }).sort(function (a, b) { return a.localeCompare(b); });
     projectFilterBar.style.display = names.length ? '' : 'none';
     var isAll = projectFilter === null;
     var isNone = !isAll && projectFilter.length === 0;
@@ -1303,7 +1311,7 @@
     var panelOffset = viewOffsetWeeks();
 
     if (isResourceView) {
-      var allProjectNames = projectGroups().map(function (g) { return g.name; });
+      var allProjectNames = visibleProjectGroups().map(function (g) { return g.name; });
       var isAll = panelFilter === null;
       var active = resources.filter(function (r) {
         var rViewStart = r.start - panelOffset;
@@ -1771,7 +1779,7 @@
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
     if (panelViewMode === 'resource') {
-      var allNames = projectGroups().map(function (g) { return g.name; });
+      var allNames = visibleProjectGroups().map(function (g) { return g.name; });
       if (chip.dataset.filterAll) {
         panelFilter = null;
       } else if (chip.dataset.filterNone) {
@@ -1828,7 +1836,7 @@
   projectFilterChips.addEventListener('click', function (e) {
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
-    var allNames = projectGroups().map(function (g) { return g.name; });
+    var allNames = visibleProjectGroups().map(function (g) { return g.name; });
     if (chip.dataset.filterAll) {
       projectFilter = null;
     } else if (chip.dataset.filterNone) {
