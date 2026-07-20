@@ -251,7 +251,8 @@
   .panel-close:hover { color: var(--series-8); background: var(--page-plane); }
   #panelViewToggle { margin-top: 12px; }
   .panel-filter { margin-top: 12px; }
-  .panel-filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .panel-filter-header { display: flex; align-items: center; gap: 2px; margin-bottom: 6px; }
+  .panel-filter-label { font-size: 11px; color: var(--text-muted); }
   .panel-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .filter-chip {
     font: inherit; font-size: 11px; padding: 4px 10px; border-radius: 999px;
@@ -300,9 +301,12 @@
   .lock-overlay-actions { display: flex; gap: 10px; justify-content: center; }
 
   .filters-block { margin-bottom: 12px; }
+  .filters-block-header { display: flex; align-items: center; gap: 2px; }
   .resource-filter { margin-bottom: 6px; }
   .resource-filter:last-child { margin-bottom: 0; }
   .resource-filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .filters-block-header .resource-filter-label { margin-bottom: 0; }
+  .filters-block-body { margin-top: 6px; }
   .resource-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
   #resourceFilterChips .filter-chip:hover { background: color-mix(in srgb, var(--series-8) 10%, var(--page-plane)); }
@@ -535,17 +539,22 @@
 
       <div class="editable-area" id="editableArea">
         <div class="filters-block" id="filtersBlock" style="display:none">
-          <div class="resource-filter-label">Filter</div>
-          <div class="resource-filter" id="resourceFilterBar" style="display:none">
-            <div class="resource-filter-chips" id="resourceFilterChips"></div>
+          <div class="filters-block-header">
+            <button type="button" class="collapse-toggle" id="filtersCollapseToggle" title="Collapse filters">▾</button>
+            <div class="resource-filter-label">Filter</div>
           </div>
+          <div class="filters-block-body" id="filtersBlockBody">
+            <div class="resource-filter" id="resourceFilterBar" style="display:none">
+              <div class="resource-filter-chips" id="resourceFilterChips"></div>
+            </div>
 
-          <div class="resource-filter" id="projectFilterBar" style="display:none">
-            <div class="resource-filter-chips" id="projectFilterChips"></div>
-          </div>
+            <div class="resource-filter" id="projectFilterBar" style="display:none">
+              <div class="resource-filter-chips" id="projectFilterChips"></div>
+            </div>
 
-          <div class="resource-filter" id="rolesFilterBar" style="display:none">
-            <div class="resource-filter-chips" id="rolesFilterChips"></div>
+            <div class="resource-filter" id="rolesFilterBar" style="display:none">
+              <div class="resource-filter-chips" id="rolesFilterChips"></div>
+            </div>
           </div>
         </div>
 
@@ -581,7 +590,10 @@
         <button type="button" class="view-toggle-btn" data-panel-view="resource">Resources</button>
       </div>
       <div class="panel-filter">
-        <div class="panel-filter-label" id="panelFilterLabel">Filter projects</div>
+        <div class="panel-filter-header">
+          <button type="button" class="collapse-toggle" id="panelFilterCollapseToggle" title="Collapse filters">▾</button>
+          <div class="panel-filter-label" id="panelFilterLabel">Filter projects</div>
+        </div>
         <div class="panel-filter-chips" id="panelFilterChips"></div>
       </div>
       <div class="panel-summary" id="panelSummary"></div>
@@ -725,7 +737,10 @@
   var panelList = document.getElementById('panelList');
   var panelClose = document.getElementById('panelClose');
   var panelFilterChips = document.getElementById('panelFilterChips');
+  var panelFilterCollapseToggle = document.getElementById('panelFilterCollapseToggle');
   var filtersBlock = document.getElementById('filtersBlock');
+  var filtersBlockBody = document.getElementById('filtersBlockBody');
+  var filtersCollapseToggle = document.getElementById('filtersCollapseToggle');
   var resourceFilterBar = document.getElementById('resourceFilterBar');
   var resourceFilterChips = document.getElementById('resourceFilterChips');
   var projectFilterBar = document.getElementById('projectFilterBar');
@@ -761,6 +776,14 @@
   var density = 'normal'; // 'normal' or 'narrow' row height
   try {
     if (localStorage.getItem('gantt-density') === 'narrow') density = 'narrow';
+  } catch (err) {}
+  var filtersCollapsed = false; // main-screen "Filter" chip block, collapsed to reclaim vertical space
+  try {
+    if (localStorage.getItem('gantt-filters-collapsed') === '1') filtersCollapsed = true;
+  } catch (err) {}
+  var panelFiltersCollapsed = false; // side-panel filter chip block
+  try {
+    if (localStorage.getItem('gantt-panel-filters-collapsed') === '1') panelFiltersCollapsed = true;
   } catch (err) {}
 
   var fsApiSupported = !!(window.showOpenFilePicker && window.showSaveFilePicker);
@@ -1265,6 +1288,9 @@
     panelViewToggleBtns.forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.panelView === panelViewMode);
     });
+    panelFilterChips.style.display = panelFiltersCollapsed ? 'none' : '';
+    panelFilterCollapseToggle.classList.toggle('collapsed', panelFiltersCollapsed);
+    panelFilterCollapseToggle.title = (panelFiltersCollapsed ? 'Expand' : 'Collapse') + ' filters';
 
     if (!selectedWeeks.length) {
       sidePanel.classList.remove('open');
@@ -1376,6 +1402,9 @@
     renderProjectFilterChips();
     renderRolesFilterChips();
     filtersBlock.style.display = (resourceFilterBar.style.display !== 'none' || projectFilterBar.style.display !== 'none' || rolesFilterBar.style.display !== 'none') ? '' : 'none';
+    filtersBlockBody.style.display = filtersCollapsed ? 'none' : '';
+    filtersCollapseToggle.classList.toggle('collapsed', filtersCollapsed);
+    filtersCollapseToggle.title = (filtersCollapsed ? 'Expand' : 'Collapse') + ' filters';
 
     grid.style.gridTemplateColumns = LABEL_WIDTH + 'px repeat(' + TOTAL_WEEKS + ', ' + WEEK_WIDTH + 'px)';
     colResizeHandle.style.left = LABEL_WIDTH + 'px';
@@ -2129,6 +2158,18 @@
     density = density === 'narrow' ? 'normal' : 'narrow';
     try { localStorage.setItem('gantt-density', density); } catch (err) {}
     render();
+  });
+
+  filtersCollapseToggle.addEventListener('click', function () {
+    filtersCollapsed = !filtersCollapsed;
+    try { localStorage.setItem('gantt-filters-collapsed', filtersCollapsed ? '1' : '0'); } catch (err) {}
+    render();
+  });
+
+  panelFilterCollapseToggle.addEventListener('click', function () {
+    panelFiltersCollapsed = !panelFiltersCollapsed;
+    try { localStorage.setItem('gantt-panel-filters-collapsed', panelFiltersCollapsed ? '1' : '0'); } catch (err) {}
+    renderPanel();
   });
 
   var ZOOM_STEP = 0.1;
