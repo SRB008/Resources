@@ -190,6 +190,26 @@
     cursor: pointer;
   }
   .ghost-btn:hover { background: var(--page-plane); }
+  .ghost-btn:disabled { opacity: 0.5; cursor: default; }
+  .ghost-btn:disabled:hover { background: var(--surface-1); }
+
+  .zoom-control {
+    display: inline-flex; align-items: stretch; border: 1px solid var(--baseline);
+    border-radius: 6px; overflow: hidden;
+  }
+  .zoom-control button {
+    font: inherit; font-size: 14px; font-weight: 600; line-height: 1; padding: 6px 12px;
+    border: none; background: var(--surface-1); color: var(--text-primary); cursor: pointer;
+  }
+  .zoom-control button:hover { background: var(--page-plane); }
+  .zoom-control button:disabled { opacity: 0.5; cursor: default; }
+  .zoom-control button:disabled:hover { background: var(--surface-1); }
+  .zoom-level {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 42px;
+    font: inherit; font-size: 12px; padding: 6px 8px; color: var(--text-secondary);
+    background: var(--surface-1); border-left: 1px solid var(--baseline); border-right: 1px solid var(--baseline);
+    user-select: none;
+  }
   .ghost-btn.danger:hover { color: var(--series-8); border-color: var(--series-8); }
   .ghost-btn.warn { color: var(--series-4); border-color: var(--series-4); }
   .ghost-btn.warn:hover { background: color-mix(in srgb, var(--series-4) 12%, var(--surface-1)); }
@@ -493,16 +513,21 @@
             <button type="button" class="view-toggle-btn" data-view="project">Projects</button>
             <button type="button" class="view-toggle-btn" data-view="resource">Resources</button>
           </div>
-          <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
           <button type="button" class="ghost-btn" id="sortAzBtn" title="Sort project or resource rows alphabethical, then by date">Sort View</button>
+          <button type="button" class="ghost-btn" id="densityToggleBtn">Density:Normal</button>
+          <div class="zoom-control">
+            <button type="button" id="zoomOutBtn" title="Zoom out (narrower weeks)">−</button>
+            <span class="zoom-level" id="zoomLevelLabel">100%</span>
+            <button type="button" id="zoomInBtn" title="Zoom in (wider weeks)">+</button>
+          </div>
           <button type="button" class="ghost-btn" id="manageRolesBtn">Assign Role</button>
           <button type="button" class="ghost-btn" id="openFileBtn">Open Data File</button>
           <button type="button" class="ghost-btn" id="cleanupBtn">Data Clean Up</button>
           <button type="button" class="ghost-btn" id="saveAsBtn" style="display:none">Save As…</button>
           <button type="button" class="ghost-btn warn" id="reconnectBtn" style="display:none">Reconnect file</button>
           <button type="button" class="ghost-btn" id="exportBtn">Back Up Data</button>
-          <button type="button" class="ghost-btn" id="exportPngBtn">Export PNG</button>
-          <button type="button" class="ghost-btn" id="exportPdfBtn">Export PDF</button>
+          <button type="button" class="ghost-btn" id="exportPngBtn" style="display:none">Export PNG</button>
+          <button type="button" class="ghost-btn" id="exportPdfBtn" style="display:none">Export PDF</button>
           <span class="save-status" id="saveStatus">—</span>
         </div>
       </div>
@@ -626,7 +651,17 @@
 <script>
 (function () {
   var TOTAL_WEEKS = 26;
-  var WEEK_WIDTH = 100;
+  var BASE_WEEK_WIDTH = 100;
+  var MIN_ZOOM = 0.5;
+  var MAX_ZOOM = 2;
+  var zoom = 1;
+  try {
+    var storedZoom = Number(localStorage.getItem('gantt-zoom'));
+    if (isFinite(storedZoom) && storedZoom >= MIN_ZOOM && storedZoom <= MAX_ZOOM) {
+      zoom = storedZoom;
+    }
+  } catch (err) {}
+  var WEEK_WIDTH = BASE_WEEK_WIDTH * zoom;
   // Fixed, never-changing internal reference point. Resource start/duration are always stored
   // as week-offsets from this Monday, so a resource's real calendar dates never move when the
   // visible timeline window (timelineStartDate) is panned — only what's on screen changes.
@@ -669,6 +704,9 @@
   var viewToggleBtns = viewToggle.querySelectorAll('.view-toggle-btn');
   var timelineStartInput = document.getElementById('timelineStartInput');
   var densityToggleBtn = document.getElementById('densityToggleBtn');
+  var zoomOutBtn = document.getElementById('zoomOutBtn');
+  var zoomInBtn = document.getElementById('zoomInBtn');
+  var zoomLevelLabel = document.getElementById('zoomLevelLabel');
   var sortAzBtn = document.getElementById('sortAzBtn');
   var manageRolesBtn = document.getElementById('manageRolesBtn');
   var rolesModalOverlay = document.getElementById('rolesModalOverlay');
@@ -1328,6 +1366,9 @@
     appEl.dataset.viewMode = viewMode;
     appEl.dataset.density = density;
     densityToggleBtn.textContent = 'Density:' + (density === 'narrow' ? 'Narrow' : 'Normal');
+    zoomOutBtn.disabled = zoom <= MIN_ZOOM;
+    zoomInBtn.disabled = zoom >= MAX_ZOOM;
+    zoomLevelLabel.textContent = Math.round(zoom * 100) + '%';
     timelineStartInput.value = isoDateString(timelineStartDate);
     renderResourceFilterChips();
     renderProjectFilterChips();
@@ -2086,6 +2127,22 @@
     density = density === 'narrow' ? 'normal' : 'narrow';
     try { localStorage.setItem('gantt-density', density); } catch (err) {}
     render();
+  });
+
+  var ZOOM_STEP = 0.1;
+  function setZoom(newZoom) {
+    zoom = Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newZoom)) * 100) / 100;
+    WEEK_WIDTH = BASE_WEEK_WIDTH * zoom;
+    try { localStorage.setItem('gantt-zoom', zoom); } catch (err) {}
+    render();
+  }
+
+  zoomOutBtn.addEventListener('click', function () {
+    setZoom(zoom - ZOOM_STEP);
+  });
+
+  zoomInBtn.addEventListener('click', function () {
+    setZoom(zoom + ZOOM_STEP);
   });
 
   sortAzBtn.addEventListener('click', function () {
