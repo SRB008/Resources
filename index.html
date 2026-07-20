@@ -978,6 +978,16 @@
     });
     return names;
   }
+  // Resources whose last assignment ended before the visible timeline's start are excluded —
+  // mirrors visibleProjectGroups() so old, no-longer-visible people don't clutter resource filters.
+  function visibleResourceNames() {
+    var offset = viewOffsetWeeks();
+    var active = {};
+    resources.forEach(function (r) {
+      if (r.start + r.duration > offset) active[normalizeResourceName(r.name)] = true;
+    });
+    return uniqueResourceNames().filter(function (n) { return active[n]; });
+  }
 
   function uniqueRoles() { return rolesCatalog.slice(); }
 
@@ -1222,7 +1232,7 @@
     panelFilterLabel.textContent = isResourceView ? 'Filter projects' : 'Filter resources';
     panelFilterChips.classList.toggle('filter-chips-red', !isResourceView);
 
-    var names = (isResourceView ? visibleProjectGroups().map(function (g) { return g.name; }) : uniqueResourceNames()).sort(function (a, b) { return a.localeCompare(b); });
+    var names = (isResourceView ? visibleProjectGroups().map(function (g) { return g.name; }) : visibleResourceNames()).sort(function (a, b) { return a.localeCompare(b); });
     var filterState = isResourceView ? panelFilter : panelResourceFilter;
     var isAll = filterState === null;
     var isNone = !isAll && filterState.length === 0;
@@ -1250,7 +1260,7 @@
   }
 
   function renderResourceFilterChips() {
-    var names = uniqueResourceNames().sort(function (a, b) { return a.localeCompare(b); });
+    var names = visibleResourceNames().sort(function (a, b) { return a.localeCompare(b); });
     resourceFilterBar.style.display = names.length ? '' : 'none';
     var isAll = resourceFilter === null;
     var isNone = !isAll && resourceFilter.length === 0;
@@ -1352,7 +1362,7 @@
         return panelRowHtml(g.name, subtitle, rangeText, g.total, true);
       }).join('');
     } else {
-      var allResNames = uniqueResourceNames();
+      var allResNames = visibleResourceNames();
       var isAllRes = panelResourceFilter === null;
       var activeR = resources.filter(function (r) {
         var rViewStart2 = r.start - panelOffset;
@@ -1792,7 +1802,7 @@
         panelFilter = (current.length === allNames.length) ? null : current;
       }
     } else {
-      var allResNames = uniqueResourceNames();
+      var allResNames = visibleResourceNames();
       if (chip.dataset.filterAll) {
         panelResourceFilter = null;
       } else if (chip.dataset.filterNone) {
@@ -1818,7 +1828,7 @@
   resourceFilterChips.addEventListener('click', function (e) {
     var chip = e.target.closest('.filter-chip');
     if (!chip) return;
-    var allNames = uniqueResourceNames();
+    var allNames = visibleResourceNames();
     if (chip.dataset.filterAll) {
       resourceFilter = null;
     } else if (chip.dataset.filterNone) {
