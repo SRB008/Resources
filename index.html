@@ -319,8 +319,6 @@
     background: color-mix(in srgb, var(--series-2) 18%, var(--surface-1));
     border-color: var(--series-2); color: var(--series-2);
   }
-  #panelRolesFilterRow { margin-top: 10px; }
-  #panelRolesFilterRow .panel-filter-label { margin-bottom: 6px; }
   #panelRolesFilterChips .filter-chip:hover { background: color-mix(in srgb, var(--series-2) 10%, var(--page-plane)); }
   #panelRolesFilterChips .filter-chip.active {
     background: color-mix(in srgb, var(--series-2) 18%, var(--surface-1));
@@ -598,14 +596,17 @@
       </div>
       <div class="panel-filter">
         <div class="panel-filter-header">
-          <button type="button" class="collapse-toggle" id="panelFilterCollapseToggle" title="Collapse filters">▾</button>
+          <button type="button" class="collapse-toggle" id="panelFilterCollapseToggle" title="Collapse filter">▾</button>
           <div class="panel-filter-label" id="panelFilterLabel">Filter projects</div>
         </div>
         <div class="panel-filter-chips" id="panelFilterChips"></div>
-        <div class="resource-filter" id="panelRolesFilterRow" style="display:none">
+      </div>
+      <div class="panel-filter" id="panelRolesFilterRow" style="display:none">
+        <div class="panel-filter-header">
+          <button type="button" class="collapse-toggle" id="panelRolesFilterCollapseToggle" title="Collapse filter">▾</button>
           <div class="panel-filter-label">Filter roles</div>
-          <div class="panel-filter-chips" id="panelRolesFilterChips"></div>
         </div>
+        <div class="panel-filter-chips" id="panelRolesFilterChips"></div>
       </div>
       <div class="panel-summary" id="panelSummary"></div>
       <div class="panel-list" id="panelList"></div>
@@ -751,6 +752,7 @@
   var panelRolesFilterRow = document.getElementById('panelRolesFilterRow');
   var panelRolesFilterChips = document.getElementById('panelRolesFilterChips');
   var panelFilterCollapseToggle = document.getElementById('panelFilterCollapseToggle');
+  var panelRolesFilterCollapseToggle = document.getElementById('panelRolesFilterCollapseToggle');
   var filtersBlock = document.getElementById('filtersBlock');
   var filtersBlockBody = document.getElementById('filtersBlockBody');
   var filtersCollapseToggle = document.getElementById('filtersCollapseToggle');
@@ -795,9 +797,13 @@
   try {
     if (localStorage.getItem('gantt-filters-collapsed') === '1') filtersCollapsed = true;
   } catch (err) {}
-  var panelFiltersCollapsed = false; // side-panel filter chip block
+  var panelFiltersCollapsed = false; // side-panel project/resource filter chip block
   try {
     if (localStorage.getItem('gantt-panel-filters-collapsed') === '1') panelFiltersCollapsed = true;
+  } catch (err) {}
+  var panelRolesFiltersCollapsed = false; // side-panel roles filter chip block, collapses independently of the block above
+  try {
+    if (localStorage.getItem('gantt-panel-roles-filters-collapsed') === '1') panelRolesFiltersCollapsed = true;
   } catch (err) {}
 
   var fsApiSupported = !!(window.showOpenFilePicker && window.showSaveFilePicker);
@@ -1263,7 +1269,6 @@
 
   function renderPanelRolesFilterChips() {
     var names = uniqueRoles().sort(function (a, b) { return a.localeCompare(b); });
-    panelRolesFilterRow.style.display = names.length ? '' : 'none';
     var isAll = panelRolesFilter === null;
     var isNone = !isAll && panelRolesFilter.length === 0;
     var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All roles</button>';
@@ -1336,9 +1341,13 @@
       btn.classList.toggle('active', btn.dataset.panelView === panelViewMode);
     });
     panelFilterChips.style.display = panelFiltersCollapsed ? 'none' : '';
-    panelRolesFilterRow.style.display = panelFiltersCollapsed ? 'none' : (uniqueRoles().length ? '' : 'none');
     panelFilterCollapseToggle.classList.toggle('collapsed', panelFiltersCollapsed);
-    panelFilterCollapseToggle.title = (panelFiltersCollapsed ? 'Expand' : 'Collapse') + ' filters';
+    panelFilterCollapseToggle.title = (panelFiltersCollapsed ? 'Expand' : 'Collapse') + ' filter';
+
+    panelRolesFilterRow.style.display = uniqueRoles().length ? '' : 'none';
+    panelRolesFilterChips.style.display = panelRolesFiltersCollapsed ? 'none' : '';
+    panelRolesFilterCollapseToggle.classList.toggle('collapsed', panelRolesFiltersCollapsed);
+    panelRolesFilterCollapseToggle.title = (panelRolesFiltersCollapsed ? 'Expand' : 'Collapse') + ' filter';
 
     if (!selectedWeeks.length) {
       sidePanel.classList.remove('open');
@@ -2241,6 +2250,12 @@
   panelFilterCollapseToggle.addEventListener('click', function () {
     panelFiltersCollapsed = !panelFiltersCollapsed;
     try { localStorage.setItem('gantt-panel-filters-collapsed', panelFiltersCollapsed ? '1' : '0'); } catch (err) {}
+    renderPanel();
+  });
+
+  panelRolesFilterCollapseToggle.addEventListener('click', function () {
+    panelRolesFiltersCollapsed = !panelRolesFiltersCollapsed;
+    try { localStorage.setItem('gantt-panel-roles-filters-collapsed', panelRolesFiltersCollapsed ? '1' : '0'); } catch (err) {}
     renderPanel();
   });
 
