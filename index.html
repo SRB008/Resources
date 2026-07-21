@@ -319,6 +319,13 @@
     background: color-mix(in srgb, var(--series-2) 18%, var(--surface-1));
     border-color: var(--series-2); color: var(--series-2);
   }
+  #panelRolesFilterRow { margin-top: 10px; }
+  #panelRolesFilterRow .panel-filter-label { margin-bottom: 6px; }
+  #panelRolesFilterChips .filter-chip:hover { background: color-mix(in srgb, var(--series-2) 10%, var(--page-plane)); }
+  #panelRolesFilterChips .filter-chip.active {
+    background: color-mix(in srgb, var(--series-2) 18%, var(--surface-1));
+    border-color: var(--series-2); color: var(--series-2);
+  }
 
   .gantt-card {
     position: relative;
@@ -595,6 +602,10 @@
           <div class="panel-filter-label" id="panelFilterLabel">Filter projects</div>
         </div>
         <div class="panel-filter-chips" id="panelFilterChips"></div>
+        <div class="resource-filter" id="panelRolesFilterRow" style="display:none">
+          <div class="panel-filter-label">Filter roles</div>
+          <div class="panel-filter-chips" id="panelRolesFilterChips"></div>
+        </div>
       </div>
       <div class="panel-summary" id="panelSummary"></div>
       <div class="panel-list" id="panelList"></div>
@@ -737,6 +748,8 @@
   var panelList = document.getElementById('panelList');
   var panelClose = document.getElementById('panelClose');
   var panelFilterChips = document.getElementById('panelFilterChips');
+  var panelRolesFilterRow = document.getElementById('panelRolesFilterRow');
+  var panelRolesFilterChips = document.getElementById('panelRolesFilterChips');
   var panelFilterCollapseToggle = document.getElementById('panelFilterCollapseToggle');
   var filtersBlock = document.getElementById('filtersBlock');
   var filtersBlockBody = document.getElementById('filtersBlockBody');
@@ -763,6 +776,7 @@
   var panelViewMode = 'resource'; // 'resource' = list resources filtered by project; 'project' = list projects filtered by resource
   var panelFilter = null; // null = all projects; otherwise an array of selected project names
   var panelResourceFilter = null; // null = all resources; otherwise an array of selected resource names (panel's "Filter resources", project-view only)
+  var panelRolesFilter = null; // null = all roles; otherwise an array of selected role tags (side panel filter, applies in both panel view modes)
   var collapsedGroups = { project: {}, resource: {} }; // per-view: group name -> true when its rows are hidden
   var resourceFilter = null; // null = all resources; otherwise an array of selected resource names (chart-wide)
   var projectFilter = null; // null = all projects; otherwise an array of selected project names (chart-wide)
@@ -1247,6 +1261,20 @@
     panelFilterChips.innerHTML = html;
   }
 
+  function renderPanelRolesFilterChips() {
+    var names = uniqueRoles().sort(function (a, b) { return a.localeCompare(b); });
+    panelRolesFilterRow.style.display = names.length ? '' : 'none';
+    var isAll = panelRolesFilter === null;
+    var isNone = !isAll && panelRolesFilter.length === 0;
+    var html = '<button type="button" class="filter-chip' + (isAll ? ' active' : '') + '" data-filter-all="1">All roles</button>';
+    html += '<button type="button" class="filter-chip' + (isNone ? ' active' : '') + '" data-filter-none="1">None</button>';
+    html += names.map(function (n) {
+      var checked = isAll || panelRolesFilter.indexOf(n) !== -1;
+      return '<button type="button" class="filter-chip' + (checked ? ' active' : '') + '" data-filter-panel-role="' + escapeAttr(n) + '">' + escapeAttr(n) + '</button>';
+    }).join('');
+    panelRolesFilterChips.innerHTML = html;
+  }
+
   function panelRowHtml(name, subtitle, rangeText, total, flagOverAllocated) {
     var overAllocated = flagOverAllocated && total > 100;
     return '<div class="panel-row">' +
@@ -1303,10 +1331,12 @@
 
   function renderPanel() {
     renderPanelFilterChips();
+    renderPanelRolesFilterChips();
     panelViewToggleBtns.forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.panelView === panelViewMode);
     });
     panelFilterChips.style.display = panelFiltersCollapsed ? 'none' : '';
+    panelRolesFilterRow.style.display = panelFiltersCollapsed ? 'none' : (uniqueRoles().length ? '' : 'none');
     panelFilterCollapseToggle.classList.toggle('collapsed', panelFiltersCollapsed);
     panelFilterCollapseToggle.title = (panelFiltersCollapsed ? 'Expand' : 'Collapse') + ' filters';
 
@@ -1323,11 +1353,13 @@
     if (isResourceView) {
       var allProjectNames = visibleProjectGroups().map(function (g) { return g.name; });
       var isAll = panelFilter === null;
+      var isRolesAll = panelRolesFilter === null;
       var active = resources.filter(function (r) {
         var rViewStart = r.start - panelOffset;
         var inRange = selectedWeeks.some(function (w) { return w >= rViewStart && w < rViewStart + r.duration; });
         var inFilter = isAll || panelFilter.indexOf(r.project || 'Untitled Project') !== -1;
-        return inRange && inFilter;
+        var inRoleFilter = isRolesAll || panelRolesFilter.indexOf(roleForResource(r)) !== -1;
+        return inRange && inFilter && inRoleFilter;
       });
       var total = active.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
       var projectsInvolved = {};
@@ -1345,6 +1377,7 @@
       var peopleCount = nameOrder.length;
 
       var filterNote = isAll ? '' : ' · filtered to ' + panelFilter.length + ' of ' + allProjectNames.length + ' projects';
+      filterNote += isRolesAll ? '' : ' · filtered to ' + panelRolesFilter.length + ' of ' + uniqueRoles().length + ' roles';
       panelSummary.textContent = peopleCount
         ? peopleCount + ' resource' + (peopleCount === 1 ? '' : 's') + ' · ' + total + '% total allocation' +
           (projectCount > 1 ? ' · ' + projectCount + ' projects' : '') + filterNote
@@ -1364,11 +1397,13 @@
     } else {
       var allResNames = visibleResourceNames();
       var isAllRes = panelResourceFilter === null;
+      var isRolesAllR = panelRolesFilter === null;
       var activeR = resources.filter(function (r) {
         var rViewStart2 = r.start - panelOffset;
         var inRange = selectedWeeks.some(function (w) { return w >= rViewStart2 && w < rViewStart2 + r.duration; });
         var inFilter = isAllRes || panelResourceFilter.indexOf((r.name || 'Untitled').trim() || 'Untitled') !== -1;
-        return inRange && inFilter;
+        var inRoleFilter = isRolesAllR || panelRolesFilter.indexOf(roleForResource(r)) !== -1;
+        return inRange && inFilter && inRoleFilter;
       });
       var totalR = activeR.reduce(function (sum, r) { return sum + (Number(r.allocation) || 0); }, 0);
       var resourcesInvolved = {};
@@ -1386,6 +1421,7 @@
       var projectListCount = projOrder.length;
 
       var filterNoteR = isAllRes ? '' : ' · filtered to ' + panelResourceFilter.length + ' of ' + allResNames.length + ' resources';
+      filterNoteR += isRolesAllR ? '' : ' · filtered to ' + panelRolesFilter.length + ' of ' + uniqueRoles().length + ' roles';
       panelSummary.textContent = projectListCount
         ? projectListCount + ' project' + (projectListCount === 1 ? '' : 's') + ' · ' + totalR + '% total allocation' +
           (resourceCount > 1 ? ' · ' + resourceCount + ' resources' : '') + filterNoteR
@@ -1814,6 +1850,24 @@
         if (idxR === -1) currentR.push(rname); else currentR.splice(idxR, 1);
         panelResourceFilter = (currentR.length === allResNames.length) ? null : currentR;
       }
+    }
+    renderPanel();
+  });
+
+  panelRolesFilterChips.addEventListener('click', function (e) {
+    var chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    var allRoleNames = uniqueRoles();
+    if (chip.dataset.filterAll) {
+      panelRolesFilter = null;
+    } else if (chip.dataset.filterNone) {
+      panelRolesFilter = [];
+    } else {
+      var roleName = chip.dataset.filterPanelRole;
+      var currentRoles = (panelRolesFilter === null) ? allRoleNames.slice() : panelRolesFilter.slice();
+      var idxRole = currentRoles.indexOf(roleName);
+      if (idxRole === -1) currentRoles.push(roleName); else currentRoles.splice(idxRole, 1);
+      panelRolesFilter = (currentRoles.length === allRoleNames.length) ? null : currentRoles;
     }
     renderPanel();
   });
