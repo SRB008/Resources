@@ -629,7 +629,8 @@
         </div>
         <div class="field">
           <label for="nameInput">Resource name</label>
-          <input id="nameInput" type="text" placeholder="e.g. Alice" required maxlength="40" />
+          <input id="nameInput" type="text" list="resourceNameList" placeholder="e.g. Alice" required maxlength="40" />
+          <datalist id="resourceNameList"></datalist>
         </div>
         <div class="field alloc">
           <label for="allocInput">Allocation</label>
@@ -1590,6 +1591,13 @@
     if (projectListEl) {
       projectListEl.innerHTML = projectGroups().map(function (g) {
         return '<option value="' + escapeAttr(g.name) + '"></option>';
+      }).join('');
+    }
+
+    var resourceNameListEl = document.getElementById('resourceNameList');
+    if (resourceNameListEl) {
+      resourceNameListEl.innerHTML = uniqueResourceNames().map(function (n) {
+        return '<option value="' + escapeAttr(n) + '"></option>';
       }).join('');
     }
 
